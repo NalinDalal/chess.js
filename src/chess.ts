@@ -2816,6 +2816,19 @@ export class Chess {
       result.push(newline)
     }
 
+    const moveList = this._buildMoveList(newline, maxWidth)
+    return result.join('') + moveList
+  }
+
+  moveList({
+    newline = '\n',
+    maxWidth = 0,
+  }: { newline?: string; maxWidth?: number } = {}): string {
+    return this._buildMoveList(newline, maxWidth)
+  }
+
+  private _buildMoveList(newline: string, maxWidth: number): string {
+    const result: string[] = []
     const appendComment = (moveString: string) => {
       const comment = this._comments[this.fen()]
       if (typeof comment !== 'undefined') {
@@ -2880,7 +2893,7 @@ export class Chess {
      * so join together moves
      */
     if (maxWidth === 0) {
-      return result.join('') + moves.join(' ')
+      return moves.join(' ')
     }
 
     // TODO (jah): huh?
