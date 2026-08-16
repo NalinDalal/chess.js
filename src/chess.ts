@@ -1941,10 +1941,31 @@ export class Chess {
 
     premoves = premoves ?? []
 
+    const color = swapColor(this._turn)
+
     if (verbose) {
-      return premoves.map((premove) => this._createMove(premove, premoves!))
+      return premoves.map((premove) => {
+        /*
+         * _makeMove() and _undoMove() assume the moving side is the side to
+         * move, so temporarily set the turn to the premove side while the
+         * move is made, undone and its SAN is generated
+         */
+        const before = this.fen()
+        this._turn = color
+        const san = this._moveToSan(premove, premoves!)
+        this._makeMove(premove)
+        const after = this.fen()
+        this._undoMove()
+        this._turn = swapColor(color)
+        return new Move(premove, san, before, after)
+      })
     } else {
-      return premoves.map((premove) => this._moveToSan(premove, premoves!))
+      this._turn = color
+      const sans = premoves.map((premove) =>
+        this._moveToSan(premove, premoves!),
+      )
+      this._turn = swapColor(color)
+      return sans
     }
   }
 
