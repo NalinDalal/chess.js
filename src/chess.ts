@@ -137,6 +137,26 @@ export function nagToGlyph(nag: NAG): string | undefined {
   return NAG_TO_SYMBOL[nag as keyof typeof NAG_TO_SYMBOL]
 }
 
+/*
+ * inverse mapping from annotation glyph to its NAG, including the standard
+ * annotation symbols (NAGs 1-6) that are not part of NAG_TO_SYMBOL
+ */
+/* eslint-disable @typescript-eslint/naming-convention */
+const SYMBOL_TO_NAG: Record<string, NAG> = {
+  '!': 1,
+  '?': 2,
+  '!!': 3,
+  '??': 4,
+  '!?': 5,
+  '?!': 6,
+  '+/-': 18, // commonly written instead of +- for "White is winning"
+  '-/+': 19, // commonly written instead of -+ for "Black is winning"
+}
+/* eslint-enable @typescript-eslint/naming-convention */
+for (const [nag, glyph] of Object.entries(NAG_TO_SYMBOL)) {
+  SYMBOL_TO_NAG[glyph as string] = Number(nag)
+}
+
 export const DEFAULT_POSITION =
   'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
@@ -1955,7 +1975,11 @@ export class Chess {
 
   move(
     move: string | { from: string; to: string; promotion?: string } | null,
-    { strict = false, comment }: { strict?: boolean; comment?: string } = {},
+    {
+      strict = false,
+      comment,
+      legal = true,
+    }: { strict?: boolean; comment?: string; legal?: boolean } = {},
   ): Move {
     /*
      * The move function can be called with in the following parameters:
@@ -1972,16 +1996,21 @@ export class Chess {
      *
      * An optional comment may be supplied to annotate the position
      * resulting from the move (e.g. a clock timestamp like '[%clk 0:03:01]').
+     *
+     * An optional legal argument may be supplied to allow pseudo-legal
+     * moves (e.g. moving a pinned piece or leaving the king in check),
+     * mirroring the "legal" option of moves(). This is useful for chess
+     * variants, premoves or analysis of illegal positions.
      */
 
     let moveObj = null
 
     if (typeof move === 'string') {
-      moveObj = this._moveFromSan(move, strict)
+      moveObj = this._moveFromSan(move, strict, legal)
     } else if (move === null) {
-      moveObj = this._moveFromSan(SAN_NULLMOVE, strict)
+      moveObj = this._moveFromSan(SAN_NULLMOVE, strict, legal)
     } else if (typeof move === 'object') {
-      const moves = this._moves()
+      const moves = this._moves({ legal })
 
       const from = move.from
       let to = move.to
@@ -2024,7 +2053,7 @@ export class Chess {
     }
 
     //disallow null moves when in check
-    if (this.isCheck() && moveObj.flags & BITS.NULL_MOVE) {
+    if (legal && this.isCheck() && moveObj.flags & BITS.NULL_MOVE) {
       throw new Error('Null move not allowed when in check')
     }
 
@@ -2032,7 +2061,7 @@ export class Chess {
      * need to make a copy of move because we can't generate SAN after the move
      * is made
      */
-    const prettyMove = this._createMove(moveObj)
+    const prettyMove = this._createMove(moveObj, this._moves({ legal }))
 
     this._makeMove(moveObj)
     this._incPositionCount()
@@ -2665,7 +2694,11 @@ export class Chess {
   }
 
   // convert a move from Standard Algebraic Notation (SAN) to 0x88 coordinates
-  private _moveFromSan(move: string, strict = false): InternalMove | null {
+  private _moveFromSan(
+    move: string,
+    strict = false,
+    legal = true,
+  ): InternalMove | null {
     // strip off any move decorations: e.g Nf3+?! becomes Nf3
     let cleanMove = strippedSan(move)
 
@@ -2690,7 +2723,7 @@ export class Chess {
     }
 
     let pieceType = inferPieceType(cleanMove)
-    let moves = this._moves({ legal: true, piece: pieceType })
+    let moves = this._moves({ legal, piece: pieceType })
 
     // strict parser
     for (let i = 0, len = moves.length; i < len; i++) {
@@ -2769,7 +2802,7 @@ export class Chess {
 
     pieceType = inferPieceType(cleanMove)
     moves = this._moves({
-      legal: true,
+      legal,
       piece: piece ? (piece as PieceSymbol) : pieceType,
     })
 
@@ -3151,6 +3184,60 @@ export class Chess {
       delete this._nags[key]
     }
     return true
+  }
+
+  /**
+   * Convert the NAG codes of the given position (or current one) into text
+   * (e.g. `$14` becomes `⩲`), append them to the position's comment and
+   * remove the NAG codes, so the annotation is kept as comment text.
+   * Returns the removed NAGs.
+   */
+  public convertNagsToComments(fen?: string): NAG[] {
+    const key = fen || this.fen()
+    const nags = this._nags[key] ?? []
+    if (nags.length === 0) {
+      return []
+    }
+
+    const text = nags.map((nag) => nagToGlyph(nag) ?? `$${nag}`).join(' ')
+    const comment = this._comments[key]
+    this._comments[key] = comment ? `${comment} ${text}` : text
+    delete this._nags[key]
+    return nags
+  }
+
+  /**
+   * Convert the annotation glyphs and `$nn` codes found in the comment of the
+   * given position (or current one) into NAG codes and remove them from the
+   * comment text, keeping the annotations on the position.
+   * Returns the NAGs that were added.
+   */
+  public convertCommentsToNags(fen?: string): NAG[] {
+    const key = fen || this.fen()
+    const comment = this._comments[key]
+    if (!comment) {
+      return []
+    }
+
+    const nags: NAG[] = []
+    const kept: string[] = []
+    for (const token of comment.split(/\s+/)) {
+      const nag =
+        SYMBOL_TO_NAG[token] ??
+        (/^\$\d+$/.test(token) ? Number(token.slice(1)) : undefined)
+      if (nag !== undefined && !nags.includes(nag)) {
+        nags.push(nag)
+      } else {
+        kept.push(token)
+      }
+    }
+    if (nags.length === 0) {
+      return []
+    }
+
+    this._comments[key] = kept.join(' ')
+    this._nags[key] = [...(this._nags[key] ?? []), ...nags]
+    return nags
   }
 
   /**

@@ -875,6 +875,24 @@ An optional `\{ comment \}` option attaches a comment to the position resulting
 from the move, which is convenient for clock timestamps in timed games (using
 the `\{[%clk h:mm:ss]\}` convention).
 
+An optional `\{ legal: false \}` option allows making pseudo-legal moves,
+mirroring the `legal` option of `moves()`. This skips the king-safety filter, so
+moves such as moving a pinned piece or leaving (or moving) the king in check are
+accepted, which is useful for chess variants, premoves and analyzing illegal
+positions. The move is still validated against the pseudo-legal move list
+(own-piece captures are rejected) and the move history, `undo()` and PGN
+generation work as usual.
+
+```ts
+const chess = new Chess('4k3/4r3/8/8/8/8/4R3/4K3 w - - 0 1')
+
+chess.moves() // the rook on e2 is pinned and may not leave the e-file
+// -> [ 'Ra2e2', ... ]   (full SAN list truncated)
+
+chess.move('Re3', { legal: false }) // moving off the pin line, allowed
+// -> { color: 'w', from: 'e2', to: 'e3', piece: 'r', san: 'Re3' }
+```
+
 ```ts
 const chess = new Chess()
 
@@ -1091,6 +1109,51 @@ chess.removeComments()
 
 chess.getComments()
 // -> []
+```
+
+#### NAG (Numeric Annotation Glyph) codes
+
+NAG codes (e.g. `$1` for `!` or `$14` for `⩲`) can be attached to positions and
+are included when exporting PGNs. Use `getNags(fen?)`, `addNag(nag, fen?)`,
+`setNags(nags, fen?)`, `removeNag(nag, fen?)` and `removeNags(fen?)` to manage
+them, optionally for a specific position instead of the current one.
+
+```ts
+const chess = new Chess()
+
+chess.move('e4')
+chess.addNag(14) // White is slightly better (⩲)
+chess.getNags()
+// -> [14]
+
+chess.removeNag(14)
+chess.getNags()
+// -> []
+```
+
+The `convertNagsToComments(fen?)` and `convertCommentsToNags(fen?)` methods
+convert between NAG codes and comment text, keeping the annotation either way.
+This is handy for PGNs that store their NAG codes inside comments (e.g.
+`{! -+ Black has a decisive advantage.}`): NAG codes, `$nn` codes and the glyphs
+`! ? !! ?? !? ?! +/- -/+ +- -+` found in comments can be converted into NAG
+entries.
+
+```ts
+chess.setComment('! -+ Black has a decisive advantage.')
+chess.convertCommentsToNags()
+// -> [1, 19]
+
+chess.getNags()
+// -> [1, 19]
+
+chess.getComment()
+// -> 'Black has a decisive advantage.'
+
+chess.convertNagsToComments()
+// -> [1, 19]
+
+chess.getComment()
+// -> 'Black has a decisive advantage. ! -+'
 ```
 
 ### .removeHeader(field: string): boolean

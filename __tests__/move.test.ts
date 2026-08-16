@@ -417,3 +417,75 @@ test('move - works - isCheck', () => {
   expect(checkMove2.san).toEqual('Qxe5+')
   expect(checkMove2.isCheck()).toEqual(true)
 })
+
+test('move({ legal: false }) - allows pseudo-legal moves that leave the king in check', () => {
+  const fen = '4k3/4r3/8/8/8/8/4R3/4K3 w - - 0 1'
+  const chess = new Chess(fen)
+  const legalMoves = chess.moves()
+  expect(legalMoves).not.toContain('Ra2')
+  expect(legalMoves).not.toContain('Rb2')
+  expect(chess.moves({ legal: false })).toContain('Ra2')
+  expect(() => chess.move('Ra2')).toThrow('Invalid move')
+  const move = chess.move('Ra2', { legal: false })
+  expect(move.san).toEqual('Ra2')
+  expect(chess.get('a2')?.type).toEqual('r')
+  expect(chess.get('e2')).toBeUndefined()
+  expect(chess.history()).toEqual(['Ra2'])
+  chess.undo()
+  expect(chess.fen()).toEqual(fen)
+})
+
+test('move({ legal: false }) - SAN, move object and null move paths', () => {
+  const fen = '4k3/4r3/8/8/8/8/8/4K3 w - - 0 1'
+  const chess = new Chess(fen)
+  expect(chess.isCheck()).toEqual(true)
+  expect(chess.moves()).not.toContain('Ke2')
+  expect(chess.moves({ legal: false })).toContain('Ke2')
+
+  const sanMove = chess.move('Ke2', { legal: false })
+  expect(sanMove.san).toEqual('Ke2')
+  expect(chess.get('e2')?.type).toEqual('k')
+
+  chess.undo()
+  const objectMove = chess.move({ from: 'e1', to: 'e2' }, { legal: false })
+  expect(objectMove.san).toEqual('Ke2')
+
+  chess.undo()
+  expect(() => chess.move(null)).toThrow('Null move not allowed when in check')
+  const nullMove = chess.move(null, { legal: false })
+  expect(nullMove.san).toEqual('--')
+  chess.undo()
+  expect(chess.fen()).toEqual(fen)
+})
+
+test('move({ legal: false }) - allows the king to move adjacent to the enemy king', () => {
+  const fen = '8/8/8/8/8/5k2/8/4K3 w - - 0 1'
+  const chess = new Chess(fen)
+  expect(() => chess.move('Kf2')).toThrow('Invalid move')
+  const move = chess.move('Kf2', { legal: false })
+  expect(move.san).toEqual('Kf2+')
+  expect(chess.get('f2')?.type).toEqual('k')
+  expect(chess.get('f3')?.type).toEqual('k')
+  chess.undo()
+  expect(chess.get('e1')?.type).toEqual('k')
+})
+
+test('move({ legal: false }) - does not allow capturing own pieces', () => {
+  const chess = new Chess(
+    'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+  )
+  expect(() => chess.move({ from: 'e2', to: 'e1' }, { legal: false })).toThrow(
+    'Invalid move',
+  )
+  expect(chess.fen()).toEqual(
+    'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+  )
+})
+
+test('move({ legal: false }) - pseudo-legal moves generate coherent SAN and PGN', () => {
+  const chess = new Chess('4k3/4r3/8/8/8/8/4R3/4K3 w - - 0 1')
+  chess.move('Ra2', { legal: false })
+  const pgn = chess.pgn()
+  expect(pgn).toContain('1. Ra2')
+  expect(chess.fen()).toEqual('4k3/4r3/8/8/8/8/R7/4K3 b - - 1 1')
+})

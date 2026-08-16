@@ -244,4 +244,98 @@ describe('NAG Support', () => {
 
     expect(chess.getNags()).toEqual([10])
   })
+
+  it('convertNagsToComments - converts NAGs to comment text and removes the NAGs', () => {
+    const chess = new Chess()
+    chess.move('e4')
+    const currentFen = chess.fen()
+
+    chess.setComment('Great move')
+    chess.addNag(14) // ⩲ - White is slightly better
+    chess.addNag(99) // no glyph, kept as $99
+
+    const removed = chess.convertNagsToComments()
+    expect(removed).toEqual([14, 99])
+    expect(chess.getNags()).toEqual([])
+    expect(chess.getComment()).toEqual('Great move ⩲ $99')
+
+    // recorded for the same position even after moving on
+    chess.move('e5')
+    expect(chess.getNags(currentFen)).toEqual([])
+    expect(chess.getComments()).toContainEqual({
+      fen: currentFen,
+      comment: 'Great move ⩲ $99',
+      nags: [],
+    })
+  })
+
+  it('convertNagsToComments - no nags leaves the comment untouched', () => {
+    const chess = new Chess()
+    chess.move('e4')
+    chess.setComment('Keep me')
+    expect(chess.convertNagsToComments()).toEqual([])
+    expect(chess.getComment()).toEqual('Keep me')
+  })
+
+  it('convertCommentsToNags - converts glyphs and $nn codes in comments to NAGs', () => {
+    const chess = new Chess()
+    chess.move('e4')
+    chess.setComment('! -+ Black has a decisive advantage.')
+    const added = chess.convertCommentsToNags()
+    expect(added).toEqual([1, 19])
+    expect(chess.getNags()).toEqual([1, 19])
+    expect(chess.getComment()).toEqual('Black has a decisive advantage.')
+
+    chess.setComment('$13 Topalov-van Wely $99 comment')
+    expect(chess.convertCommentsToNags()).toEqual([13, 99])
+    expect(chess.getNags()).toEqual([1, 19, 13, 99])
+    expect(chess.getComment()).toEqual('Topalov-van Wely comment')
+  })
+
+  it('convertCommentsToNags - no glyphs leaves the comment untouched', () => {
+    const chess = new Chess()
+    chess.move('e4')
+    chess.setComment('Plain comment without annotations')
+    expect(chess.convertCommentsToNags()).toEqual([])
+    expect(chess.getComment()).toEqual('Plain comment without annotations')
+  })
+
+  it('convertNagsToComments and convertCommentsToNags round-trip', () => {
+    const chess = new Chess()
+    chess.move('e4')
+    chess.setComment('annotated')
+    chess.addNag(14)
+    chess.addNag(36)
+
+    // NAGs -> comment text, keeping the annotation
+    expect(chess.convertNagsToComments()).toEqual([14, 36])
+    expect(chess.getComment()).toEqual('annotated ⩲ ↑')
+
+    // comment text -> NAGs, keeping both
+    expect(chess.convertCommentsToNags()).toEqual([14, 36])
+    expect(chess.getNags()).toEqual([14, 36])
+    expect(chess.getComment()).toEqual('annotated')
+  })
+
+  it('PGN with comment-style glyphs parses to NAGs via convertCommentsToNags', () => {
+    const chess = new Chess()
+    const pgn =
+      '1. e4 {!} e5 {-/+ Black has the upper hand (Cochrane)} 2. Nf3 *'
+    chess.loadPgn(pgn)
+
+    for (const entry of chess.getComments()) {
+      chess.convertCommentsToNags(entry.fen)
+    }
+    const comments = chess.getComments()
+
+    const e4Entry = comments.find(
+      (c) => c.fen.includes('4P3') && !c.fen.includes('5N2'),
+    )
+    expect(e4Entry?.comment).toBe('')
+    expect(e4Entry?.nags).toEqual([1])
+
+    const e5Entry = comments.find((c) => c.fen.includes('4p3'))
+    expect(e5Entry?.comment).toBe('Black has the upper hand (Cochrane)')
+    expect(e5Entry?.nags).toEqual([19])
+  })
 })

@@ -36,6 +36,8 @@ export class Chess {
     clear({ preserveHeaders }?: {
         preserveHeaders?: boolean | undefined;
     }): void;
+    convertCommentsToNags(fen?: string): NAG[];
+    convertNagsToComments(fen?: string): NAG[];
     // @deprecated (undocumented)
     deleteComment(): string;
     // @deprecated (undocumented)
@@ -137,9 +139,10 @@ export class Chess {
         from: string;
         to: string;
         promotion?: string;
-    } | null, { strict, comment }?: {
+    } | null, { strict, comment, legal, }?: {
         strict?: boolean;
         comment?: string;
+        legal?: boolean;
     }): Move;
     // (undocumented)
     moveNumber(): number;
