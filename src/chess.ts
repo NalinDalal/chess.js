@@ -28,6 +28,13 @@
 import { parse } from './pgn'
 import type { Node as RavNode } from './node'
 
+export class IllegalMoveError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'IllegalMoveError'
+  }
+}
+
 const MASK64 = 0xffffffffffffffffn
 
 function rotl(x: bigint, k: bigint): bigint {
@@ -1905,8 +1912,6 @@ export class Chess {
      * intersection of the legal moves of the non-active side across all
      * active-side moves
      */
-    const color = swapColor(this._turn)
-
     let premoves: InternalMove[] | null = null
 
     for (const activeMove of this._moves({ legal: true })) {
@@ -2263,9 +2268,9 @@ export class Chess {
         return null
       }
       if (typeof move === 'string') {
-        throw new Error(`Invalid move: ${move}`)
+        throw new IllegalMoveError(`Invalid move: ${move}`)
       } else {
-        throw new Error(`Invalid move: ${JSON.stringify(move)}`)
+        throw new IllegalMoveError(`Invalid move: ${JSON.stringify(move)}`)
       }
     }
 
@@ -2274,7 +2279,7 @@ export class Chess {
       if (invalidResult === 'null') {
         return null
       }
-      throw new Error('Null move not allowed when in check')
+      throw new IllegalMoveError('Null move not allowed when in check')
     }
 
     /*
@@ -3018,7 +3023,7 @@ export class Chess {
 
         const move = this._moveFromSan(node.move, strict)
         if (!move) {
-          throw new Error(`Invalid move in PGN: ${node.move}`)
+          throw new IllegalMoveError(`Invalid move in PGN: ${node.move}`)
         } else {
           this._makeMove(move)
           this._incPositionCount()

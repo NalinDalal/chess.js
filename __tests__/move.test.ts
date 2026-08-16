@@ -1,4 +1,4 @@
-import { Chess } from '../src/chess'
+import { Chess, IllegalMoveError } from '../src/chess'
 import { expect, test } from 'vitest'
 
 test('move - works - standard algebraic notation', () => {
@@ -541,4 +541,17 @@ test('tryMove - supports legal: false pseudo-legal moves', () => {
   const move = chess.tryMove('Rg2', { legal: false })
   expect(move?.san).toEqual('Rg2')
   expect(move?.to).toEqual('g2')
+})
+
+test('move - throws IllegalMoveError for invalid moves', () => {
+  const chess = new Chess()
+  expect(() => chess.move('e5')).toThrow(IllegalMoveError)
+  expect(() => chess.move('e5')).toThrow('Invalid move: e5')
+})
+
+test('move - throws IllegalMoveError for null move in check', () => {
+  const chess = new Chess('4k3/4r3/8/8/8/8/8/4K3 w - - 0 1')
+  expect(chess.isCheck()).toEqual(true)
+  expect(() => chess.move(null)).toThrow(IllegalMoveError)
+  expect(() => chess.move(null)).toThrow('Null move not allowed when in check')
 })
