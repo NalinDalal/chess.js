@@ -27,6 +27,8 @@ export class Chess {
         color: Color;
     } | null)[][];
     // (undocumented)
+    canClaimDraw(): boolean;
+    // (undocumented)
     clear({ preserveHeaders }?: {
         preserveHeaders?: boolean | undefined;
     }): void;
@@ -90,11 +92,19 @@ export class Chess {
     // (undocumented)
     isCheckmate(): boolean;
     // (undocumented)
-    isDraw(): boolean;
+    isDraw({ strict }?: {
+        strict?: boolean;
+    }): boolean;
     // (undocumented)
     isDrawByFiftyMoves(): boolean;
     // (undocumented)
-    isGameOver(): boolean;
+    isFiftyMoveRule(): boolean;
+    // (undocumented)
+    isFivefoldRepetition(): boolean;
+    // (undocumented)
+    isGameOver({ strict }?: {
+        strict?: boolean;
+    }): boolean;
     // (undocumented)
     isInsufficientMaterial(): boolean;
     // (undocumented)
@@ -102,6 +112,8 @@ export class Chess {
         from: Square;
         to: Square;
     }): boolean;
+    // (undocumented)
+    isSeventyFiveMoveRule(): boolean;
     // (undocumented)
     isStalemate(): boolean;
     // (undocumented)

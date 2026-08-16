@@ -1421,21 +1421,40 @@ export class Chess {
     return this._getPositionCount(this._hash) >= 3
   }
 
-  isDrawByFiftyMoves(): boolean {
-    return this._halfMoves >= 100 // 50 moves per side = 100 half moves
+  isFivefoldRepetition(): boolean {
+    return this._getPositionCount(this._hash) >= 5
   }
 
-  isDraw(): boolean {
+  isFiftyMoveRule(): boolean {
+    // 50 moves per side = 100 half moves
+    return this._halfMoves >= 100
+  }
+
+  isDrawByFiftyMoves(): boolean {
+    return this.isFiftyMoveRule()
+  }
+
+  isSeventyFiveMoveRule(): boolean {
+    // 75 moves per side = 150 half moves
+    return this._halfMoves >= 150
+  }
+
+  canClaimDraw(): boolean {
+    return this.isThreefoldRepetition() || this.isFiftyMoveRule()
+  }
+
+  isDraw({ strict = false }: { strict?: boolean } = {}): boolean {
     return (
-      this.isDrawByFiftyMoves() ||
       this.isStalemate() ||
       this.isInsufficientMaterial() ||
-      this.isThreefoldRepetition()
+      (strict
+        ? this.isFivefoldRepetition() || this.isSeventyFiveMoveRule()
+        : this.canClaimDraw())
     )
   }
 
-  isGameOver(): boolean {
-    return this.isCheckmate() || this.isDraw()
+  isGameOver({ strict = false }: { strict?: boolean } = {}): boolean {
+    return this.isCheckmate() || this.isDraw({ strict })
   }
 
   isPromotion({ from, to }: { from: Square; to: Square }): boolean {
