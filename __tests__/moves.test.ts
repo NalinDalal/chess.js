@@ -311,3 +311,120 @@ test('isStalemate - no kings (starting position minus kings)', () => {
 
   expect(noKings.isStalemate()).toEqual(false)
 })
+
+test('moves - pseudo-legal - checkmate', () => {
+  const chess = new Chess('R5k1/R7/8/8/8/8/8/7K b - - 0 1')
+
+  expect(chess.isCheckmate()).toEqual(true)
+  expect(chess.moves()).toEqual([])
+  expect(chess.moves({ legal: false })).to.have.members(
+    split('Kh8 Kh7 Kg7 Kf7 Kf8'),
+  )
+})
+
+test('moves - pseudo-legal - checkmate - verbose', () => {
+  const chess = new Chess('R5k1/R7/8/8/8/8/8/7K b - - 0 1')
+  const moves = [
+    {
+      color: 'b',
+      from: 'g8',
+      to: 'h8',
+      piece: 'k',
+      flags: 'n',
+      san: 'Kh8',
+      lan: 'g8h8',
+      before: 'R5k1/R7/8/8/8/8/8/7K b - - 0 1',
+      after: 'R6k/R7/8/8/8/8/8/7K w - - 1 2',
+      captured: undefined,
+      promotion: undefined,
+    },
+    {
+      color: 'b',
+      from: 'g8',
+      to: 'h7',
+      piece: 'k',
+      flags: 'n',
+      san: 'Kh7',
+      lan: 'g8h7',
+      before: 'R5k1/R7/8/8/8/8/8/7K b - - 0 1',
+      after: 'R7/R6k/8/8/8/8/8/7K w - - 1 2',
+      captured: undefined,
+      promotion: undefined,
+    },
+    {
+      color: 'b',
+      from: 'g8',
+      to: 'g7',
+      piece: 'k',
+      flags: 'n',
+      san: 'Kg7',
+      lan: 'g8g7',
+      before: 'R5k1/R7/8/8/8/8/8/7K b - - 0 1',
+      after: 'R7/R5k1/8/8/8/8/8/7K w - - 1 2',
+      captured: undefined,
+      promotion: undefined,
+    },
+    {
+      color: 'b',
+      from: 'g8',
+      to: 'f7',
+      piece: 'k',
+      flags: 'n',
+      san: 'Kf7',
+      lan: 'g8f7',
+      before: 'R5k1/R7/8/8/8/8/8/7K b - - 0 1',
+      after: 'R7/R4k2/8/8/8/8/8/7K w - - 1 2',
+      captured: undefined,
+      promotion: undefined,
+    },
+    {
+      color: 'b',
+      from: 'g8',
+      to: 'f8',
+      piece: 'k',
+      flags: 'n',
+      san: 'Kf8',
+      lan: 'g8f8',
+      before: 'R5k1/R7/8/8/8/8/8/7K b - - 0 1',
+      after: 'R4k2/R7/8/8/8/8/8/7K w - - 1 2',
+      captured: undefined,
+      promotion: undefined,
+    },
+  ]
+
+  expect(chess.moves({ legal: false, verbose: true })).to.have.deep.members(
+    moves,
+  )
+})
+
+test('moves - pseudo-legal - pinned piece', () => {
+  const chess = new Chess('4r1k1/8/8/8/8/8/4R3/4K3 w - - 0 1')
+
+  expect(chess.moves({ square: 'e2' })).to.have.members(
+    split('Re3 Re4 Re5 Re6 Re7 Rxe8+'),
+  )
+  expect(chess.moves({ legal: false, square: 'e2' })).to.have.members(
+    split('Re3 Re4 Re5 Re6 Re7 Rxe8+ Rf2 Rg2+ Rh2 Rd2 Rc2 Rb2 Ra2'),
+  )
+})
+
+test('moves - pseudo-legal - when in check', () => {
+  const chess = new Chess('4k3/8/8/8/8/5n2/3PPP2/3RK2R w - - 0 1')
+
+  expect(chess.moves()).to.have.members(split('exf3 Kf1'))
+  expect(chess.moves({ legal: false })).to.have.members(
+    split(
+      'd3 d4 e3 e4 exf3 Rc1 Rb1 Ra1 Kf1 Rh2 Rh3 Rh4 Rh5 Rh6 Rh7 Rh8+ Rg1 Rf1',
+    ),
+  )
+  expect(chess.moves({ legal: false, square: 'e1' })).toEqual(['Kf1'])
+})
+
+test('moves - pseudo-legal - ignores check', () => {
+  const chess = new Chess('4k3/8/8/8/8/8/8/3qK3 w - - 0 1')
+
+  expect(chess.moves()).to.have.members(split('Kf2 Kxd1'))
+  expect(chess.moves({ legal: false })).to.have.members(
+    split('Kd2 Ke2 Kf2 Kf1 Kxd1'),
+  )
+})

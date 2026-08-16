@@ -141,71 +141,88 @@ export class Chess {
     // (undocumented)
     moves(): string[];
     // (undocumented)
-    moves({ square }: {
+    moves({ square, legal }: {
         square: Square;
+        legal?: boolean;
     }): string[];
     // (undocumented)
-    moves({ piece }: {
+    moves({ piece, legal }: {
         piece: PieceSymbol;
+        legal?: boolean;
     }): string[];
     // (undocumented)
-    moves({ square, piece }: {
+    moves({ legal }: {
+        legal: boolean;
+    }): string[];
+    // (undocumented)
+    moves({ square, piece, legal, }: {
         square: Square;
         piece: PieceSymbol;
+        legal?: boolean;
     }): string[];
     // (undocumented)
-    moves({ verbose, square }: {
+    moves({ verbose, square, legal, }: {
         verbose: true;
         square?: Square;
+        legal?: boolean;
     }): Move[];
     // (undocumented)
-    moves({ verbose, square }: {
+    moves({ verbose, square, legal, }: {
         verbose: false;
         square?: Square;
+        legal?: boolean;
     }): string[];
     // (undocumented)
-    moves({ verbose, square, }: {
+    moves({ verbose, square, legal, }: {
         verbose?: boolean;
         square?: Square;
+        legal?: boolean;
     }): string[] | Move[];
     // (undocumented)
-    moves({ verbose, piece }: {
+    moves({ verbose, piece, legal, }: {
         verbose: true;
         piece?: PieceSymbol;
+        legal?: boolean;
     }): Move[];
     // (undocumented)
-    moves({ verbose, piece }: {
+    moves({ verbose, piece, legal, }: {
         verbose: false;
         piece?: PieceSymbol;
+        legal?: boolean;
     }): string[];
     // (undocumented)
-    moves({ verbose, piece, }: {
+    moves({ verbose, piece, legal, }: {
         verbose?: boolean;
         piece?: PieceSymbol;
+        legal?: boolean;
     }): string[] | Move[];
     // (undocumented)
-    moves({ verbose, square, piece, }: {
+    moves({ verbose, square, piece, legal, }: {
         verbose: true;
         square?: Square;
         piece?: PieceSymbol;
+        legal?: boolean;
     }): Move[];
     // (undocumented)
-    moves({ verbose, square, piece, }: {
+    moves({ verbose, square, piece, legal, }: {
         verbose: false;
         square?: Square;
         piece?: PieceSymbol;
+        legal?: boolean;
     }): string[];
     // (undocumented)
-    moves({ verbose, square, piece, }: {
+    moves({ verbose, square, piece, legal, }: {
         verbose?: boolean;
         square?: Square;
         piece?: PieceSymbol;
+        legal?: boolean;
     }): string[] | Move[];
     // (undocumented)
-    moves({ square, piece }: {
+    moves({ square, piece, legal, }: {
         square?: Square;
         piece?: PieceSymbol;
-    }): Move[];
+        legal?: boolean;
+    }): string[] | Move[];
     // (undocumented)
     perft(depth: number): number;
     // (undocumented)

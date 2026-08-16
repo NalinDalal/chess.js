@@ -1476,8 +1476,8 @@ export class Chess {
     )
   }
 
-  private _createMove(internal: InternalMove) {
-    const san = this._moveToSan(internal, this._moves({ legal: true }))
+  private _createMove(internal: InternalMove, moves?: InternalMove[]) {
+    const san = this._moveToSan(internal, moves ?? this._moves({ legal: true }))
     const before = this.fen()
 
     this._makeMove(internal)
@@ -1488,70 +1488,135 @@ export class Chess {
   }
 
   moves(): string[]
-  moves({ square }: { square: Square }): string[]
-  moves({ piece }: { piece: PieceSymbol }): string[]
+  moves({ square, legal }: { square: Square; legal?: boolean }): string[]
+  moves({ piece, legal }: { piece: PieceSymbol; legal?: boolean }): string[]
+  moves({ legal }: { legal: boolean }): string[]
 
-  moves({ square, piece }: { square: Square; piece: PieceSymbol }): string[]
+  moves({
+    square,
+    piece,
+    legal,
+  }: {
+    square: Square
+    piece: PieceSymbol
+    legal?: boolean
+  }): string[]
 
-  moves({ verbose, square }: { verbose: true; square?: Square }): Move[]
-  moves({ verbose, square }: { verbose: false; square?: Square }): string[]
   moves({
     verbose,
     square,
+    legal,
+  }: {
+    verbose: true
+    square?: Square
+    legal?: boolean
+  }): Move[]
+  moves({
+    verbose,
+    square,
+    legal,
+  }: {
+    verbose: false
+    square?: Square
+    legal?: boolean
+  }): string[]
+  moves({
+    verbose,
+    square,
+    legal,
   }: {
     verbose?: boolean
     square?: Square
+    legal?: boolean
   }): string[] | Move[]
 
-  moves({ verbose, piece }: { verbose: true; piece?: PieceSymbol }): Move[]
-  moves({ verbose, piece }: { verbose: false; piece?: PieceSymbol }): string[]
   moves({
     verbose,
     piece,
+    legal,
+  }: {
+    verbose: true
+    piece?: PieceSymbol
+    legal?: boolean
+  }): Move[]
+  moves({
+    verbose,
+    piece,
+    legal,
+  }: {
+    verbose: false
+    piece?: PieceSymbol
+    legal?: boolean
+  }): string[]
+  moves({
+    verbose,
+    piece,
+    legal,
   }: {
     verbose?: boolean
     piece?: PieceSymbol
+    legal?: boolean
   }): string[] | Move[]
 
   moves({
     verbose,
     square,
     piece,
+    legal,
   }: {
     verbose: true
     square?: Square
     piece?: PieceSymbol
+    legal?: boolean
   }): Move[]
   moves({
     verbose,
     square,
     piece,
+    legal,
   }: {
     verbose: false
     square?: Square
     piece?: PieceSymbol
+    legal?: boolean
   }): string[]
   moves({
     verbose,
     square,
     piece,
+    legal,
   }: {
     verbose?: boolean
     square?: Square
     piece?: PieceSymbol
+    legal?: boolean
   }): string[] | Move[]
 
-  moves({ square, piece }: { square?: Square; piece?: PieceSymbol }): Move[]
+  moves({
+    square,
+    piece,
+    legal,
+  }: {
+    square?: Square
+    piece?: PieceSymbol
+    legal?: boolean
+  }): string[] | Move[]
 
   moves({
+    legal = true,
     verbose = false,
     square = undefined,
     piece = undefined,
-  }: { verbose?: boolean; square?: Square; piece?: PieceSymbol } = {}) {
-    const moves = this._moves({ square, piece })
+  }: {
+    legal?: boolean
+    verbose?: boolean
+    square?: Square
+    piece?: PieceSymbol
+  } = {}) {
+    const moves = this._moves({ legal, square, piece })
 
     if (verbose) {
-      return moves.map((move) => this._createMove(move))
+      return moves.map((move) => this._createMove(move, moves))
     } else {
       return moves.map((move) => this._moveToSan(move, moves))
     }

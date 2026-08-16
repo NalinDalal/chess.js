@@ -858,11 +858,16 @@ chess.moveNumber()
 // -> 20
 ```
 
-### .moves(\{ piece?: Piece, square?: Square, verbose = false\} = \{\})
+### .moves(\{ piece?: Piece, square?: Square, verbose = false, legal = true\} = \{\})
 
 Returns a list of legal moves from the current position. This function takes an
 optional object which can be used to generate detailed move objects or to
 restrict the move generator to specific squares or pieces.
+
+When `legal` is set to `false`, pseudo-legal moves are returned instead. These
+include moves that leave the side to move's own king in check or that fail to
+resolve an existing check, which is useful for chess variants where the goal is
+to capture the king or for move generation during analysis.
 
 ```ts
 const chess = new Chess()
@@ -877,7 +882,8 @@ chess.moves({ piece: 'n' }) // generate moves for piece type
 // ['Na3', 'Nc3', 'Nf3', 'Nh3']
 
 chess.moves({ verbose: true }) // return verbose moves
-// -> [{ color: 'w', from: 'a2', to: 'a3',
+// -> [
+//     { color: 'w', from: 'a2', to: 'a3',
 //       piece: 'p',
 //       san: 'a3', lan: 'a2a3',
 //       before: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
@@ -888,6 +894,11 @@ chess.moves({ verbose: true }) // return verbose moves
 //     ...
 //     ]
 ```
+
+chess.load('R5k1/R7/8/8/8/8/8/7K b - - 0 1') chess.moves() // -> [] (checkmate)
+
+chess.moves({ legal: false }) // pseudo-legal moves, ignoring checks // ->
+['Kh8', 'Kh7', 'Kg7', 'Kf7', 'Kf8']
 
 #### Move Object (e.g. when \{ verbose: true \})
 
