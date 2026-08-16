@@ -3805,3 +3805,201 @@ export class Chess {
     return this._moveNumber
   }
 }
+
+export interface CursorOptions {
+  start?: number
+  length?: number
+  onError?: (error: Error, gameIndex: number) => void
+}
+
+export interface GameIndex {
+  startOffset: number
+  endOffset: number
+  headers: Record<string, string>
+}
+
+export class Cursor {
+  private _pgnSource: string
+  private gameIndices: GameIndex[]
+  private currentPosition: number
+  private options: Required<CursorOptions>
+
+  public errors: Array<{ index: number; error: Error }> = []
+  public totalGames?: number
+
+  constructor(pgn: string, indices: GameIndex[], options: CursorOptions = {}) {
+    const defaults: Required<CursorOptions> = {
+      start: 0,
+      length: Infinity,
+      onError: () => {},
+    }
+
+    this._pgnSource = pgn
+    this.gameIndices = indices
+    this.options = { ...defaults, ...options }
+    this.currentPosition = this.options.start
+    this.totalGames = indices.length
+  }
+
+  public next(): Chess | null {
+    if (!this.hasNext()) return null
+    const idx = this.currentPosition
+    const game = this.parseGame(idx)
+    this.currentPosition++
+    return game
+  }
+
+  public hasNext(): boolean {
+    const start = this.options.start
+    const max =
+      this.options.length === Infinity
+        ? this.gameIndices.length
+        : start + this.options.length
+    return this.currentPosition < Math.min(this.gameIndices.length, max)
+  }
+
+  public get position(): number {
+    return this.currentPosition
+  }
+
+  public reset(): void {
+    this.currentPosition = this.options.start
+  }
+
+  private parseGame(index: number): Chess | null {
+    const gameIndex = this.gameIndices[index]
+    const gamePgn = this._pgnSource.substring(
+      gameIndex.startOffset,
+      gameIndex.endOffset,
+    )
+
+    try {
+      const chess = new Chess()
+      chess.loadPgn(gamePgn)
+      return chess
+    } catch (error) {
+      const err = error as Error
+      this.errors.push({ index, error: err })
+      this.options.onError(err, index)
+      return null
+    }
+  }
+}
+
+export function indexPgnGames(pgn: string): GameIndex[] {
+  const indices: GameIndex[] = []
+  pgn = pgn.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const lines = pgn.split('\n')
+
+  /*
+   * Precompute line offsets for O(1) boundary lookups.
+   */
+  const lineOffsets: number[] = new Array(lines.length)
+  let runningOffset = 0
+  for (let i = 0; i < lines.length; i++) {
+    lineOffsets[i] = runningOffset
+    runningOffset += lines[i].length + 1
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
+
+    if (line.startsWith('[')) {
+      const prev = i > 0 ? lines[i - 1].trim() : ''
+      if (prev !== '') {
+        continue
+      }
+
+      const startOffset = lineOffsets[i]
+
+      if (indices.length > 0 && indices[indices.length - 1].endOffset === 0) {
+        indices[indices.length - 1].endOffset = startOffset
+      }
+
+      const headers: Record<string, string> = {}
+      let j = i
+      while (j < lines.length) {
+        const ln = lines[j].trim()
+        if (ln === '' || !ln.startsWith('[')) {
+          break
+        }
+        const kv = parseTagPairLine(ln)
+        if (kv) {
+          headers[kv.key] = kv.value
+        }
+        j++
+      }
+
+      indices.push({ startOffset, endOffset: 0, headers })
+      i = j - 1
+    }
+  }
+
+  if (indices.length > 0 && indices[indices.length - 1].endOffset === 0) {
+    indices[indices.length - 1].endOffset = pgn.length
+  }
+
+  if (indices.length === 0) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim()
+      if (/^1\./.test(line)) {
+        const prev = i > 0 ? lines[i - 1].trim() : ''
+        if (prev === '') {
+          const startOffset = lineOffsets[i]
+          if (
+            indices.length > 0 &&
+            indices[indices.length - 1].endOffset === 0
+          ) {
+            indices[indices.length - 1].endOffset = startOffset
+          }
+          indices.push({ startOffset, endOffset: 0, headers: {} })
+        }
+      }
+    }
+
+    if (indices.length > 0 && indices[indices.length - 1].endOffset === 0) {
+      indices[indices.length - 1].endOffset = pgn.length
+    }
+  }
+
+  return indices
+}
+
+function parseTagPairLine(line: string): { key: string; value: string } | null {
+  const ln = line.trim()
+  if (!ln.startsWith('[')) return null
+
+  const nameMatch = ln.match(/^\[([A-Za-z0-9_]+)\s+/)
+  if (!nameMatch) return null
+  const key = nameMatch[1]
+
+  const firstQuote = ln.indexOf('"', nameMatch[0].length)
+  if (firstQuote === -1) return null
+
+  let k = firstQuote + 1
+  let closed = -1
+  while (k < ln.length) {
+    if (ln[k] === '"') {
+      let bs = 0
+      let p = k - 1
+      while (p >= 0 && ln[p] === '\\') {
+        bs++
+        p--
+      }
+      if (bs % 2 === 0) {
+        closed = k
+        break
+      }
+    }
+    k++
+  }
+  if (closed === -1) return null
+
+  const after = ln.substring(closed + 1).trim()
+  if (!after.startsWith(']')) return null
+
+  const raw = ln.substring(firstQuote + 1, closed)
+  const value = raw.replace(/\\\\/g, '\\').replace(/\\"/g, '"')
+
+  return { key, value }
+}

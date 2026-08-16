@@ -33,6 +33,8 @@ export class Chess {
     // (undocumented)
     canClaimDraw(): boolean;
     // (undocumented)
+    capturedPieces(color: Color): PieceSymbol[];
+    // (undocumented)
     clear({ preserveHeaders }?: {
         preserveHeaders?: boolean | undefined;
     }): void;
@@ -146,6 +148,11 @@ export class Chess {
         legal?: boolean;
     }): Move;
     // (undocumented)
+    moveList({ newline, maxWidth, }?: {
+        newline?: string;
+        maxWidth?: number;
+    }): string;
+    // (undocumented)
     moveNumber(): number;
     // (undocumented)
     moves(): string[];
@@ -242,6 +249,22 @@ export class Chess {
         maxWidth?: number;
     }): string;
     // (undocumented)
+    pinnedPieces(color?: Color): PinnedPiece[];
+    // (undocumented)
+    premoves(): string[];
+    // (undocumented)
+    premoves({ verbose }: {
+        verbose: true;
+    }): Move[];
+    // (undocumented)
+    premoves({ verbose }: {
+        verbose: false;
+    }): string[];
+    // (undocumented)
+    premoves({ verbose }: {
+        verbose: boolean;
+    }): string[] | Move[];
+    // (undocumented)
     put({ type, color }: {
         type: PieceSymbol;
         color: Color;
@@ -298,7 +321,55 @@ export class Chess {
 export type Color = 'w' | 'b';
 
 // @public (undocumented)
+export class Cursor {
+    constructor(pgn: string, indices: GameIndex[], options?: CursorOptions);
+    // (undocumented)
+    errors: Array<{
+        index: number;
+        error: Error;
+    }>;
+    // (undocumented)
+    hasNext(): boolean;
+    // (undocumented)
+    next(): Chess | null;
+    // (undocumented)
+    get position(): number;
+    // (undocumented)
+    reset(): void;
+    // (undocumented)
+    totalGames?: number;
+}
+
+// @public (undocumented)
+export interface CursorOptions {
+    // (undocumented)
+    length?: number;
+    // (undocumented)
+    onError?: (error: Error, gameIndex: number) => void;
+    // (undocumented)
+    start?: number;
+}
+
+// @public (undocumented)
 export const DEFAULT_POSITION = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+// @public (undocumented)
+export interface GameIndex {
+    // (undocumented)
+    endOffset: number;
+    // (undocumented)
+    headers: Record<string, string>;
+    // (undocumented)
+    startOffset: number;
+}
+
+// @public
+export class IllegalMoveError extends Error {
+    constructor(message: string);
+}
+
+// @public (undocumented)
+export function indexPgnGames(pgn: string): GameIndex[];
 
 // @public (undocumented)
 export const KING = "k";
@@ -391,6 +462,20 @@ export type Piece = {
 export type PieceSymbol = 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
 
 // @public (undocumented)
+export interface PinnedPiece {
+    // (undocumented)
+    color: Color;
+    // (undocumented)
+    piece: PieceSymbol;
+    // (undocumented)
+    pinnedBy: Square;
+    // (undocumented)
+    pinnedByPiece: PieceSymbol;
+    // (undocumented)
+    square: Square;
+}
+
+// @public (undocumented)
 export const QUEEN = "q";
 
 // @public (undocumented)
@@ -420,7 +505,7 @@ export function validateFen(fen: string): {
 // @public (undocumented)
 export const WHITE = "w";
 
-// @public
+// @public (undocumented)
 export function xoroshiro128(state: bigint): () => bigint;
 
 // (No @packageDocumentation comment for this package)
