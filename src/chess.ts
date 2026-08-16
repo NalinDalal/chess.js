@@ -166,6 +166,19 @@ export type Piece = {
   type: PieceSymbol
 }
 
+/*
+ * a piece pinned to its own king: the piece on `square` may only move
+ * along the line towards the pinnedBy square, since sliding it off that
+ * line would expose the king to the pinning piece
+ */
+export interface PinnedPiece {
+  square: Square
+  piece: PieceSymbol
+  color: Color
+  pinnedBy: Square
+  pinnedByPiece: PieceSymbol
+}
+
 type InternalMove = {
   color: Color
   from: number
@@ -861,6 +874,13 @@ export class Chess {
   // tracks number of times a position has been seen for repetition checking
   private _positionCount = new Map<bigint, number>()
 
+  /*
+   * the pieces each color has captured, in the order they were captured.
+   * the array of a color holds the pieces of the OPPOSITE color that the
+   * color has taken off the board
+   */
+  private _capturedPieces: Record<Color, PieceSymbol[]> = { w: [], b: [] }
+
   constructor(fen = DEFAULT_POSITION, { skipValidation = false } = {}) {
     this._comments = {}
     this._suffixes = {}
@@ -892,6 +912,7 @@ export class Chess {
     this._header = preserveHeaders ? this._header : { ...HEADER_TEMPLATE }
     this._hash = this._computeHash()
     this._positionCount = new Map<bigint, number>()
+    this._capturedPieces = { w: [], b: [] }
 
     /*
      * Delete the SetUp and FEN headers (if preserved), the board is empty and
@@ -1509,6 +1530,64 @@ export class Chess {
     }
   }
 
+  /*
+   * every piece of the given color that is pinned to its king, together
+   * with the piece pinning it. A pinned piece may only move along the
+   * line towards the pinning piece. When several of the color's pieces
+   * lie on the same attack line, only the piece closest to the king is
+   * reported as pinned.
+   */
+  pinnedPieces(color: Color = this._turn): PinnedPiece[] {
+    const kingSquare = this._kings[color]
+    if (kingSquare === EMPTY) {
+      return []
+    }
+
+    const pinned: PinnedPiece[] = []
+
+    /*
+     * the 8 directions from the king in 0x88 index space. horizontal and
+     * vertical steps (1, 16) can only be pinned by rooks/queens, diagonal
+     * steps (15, 17) only by bishops/queens.
+     */
+    for (const dir of [15, 16, 17, 1, -15, -16, -17, -1]) {
+      const orthogonal = Math.abs(dir) === 1 || Math.abs(dir) === 16
+
+      let blocker = EMPTY
+
+      for (let step = kingSquare + dir; !(step & 0x88); step += dir) {
+        const piece = this._board[step]
+        if (!piece) {
+          continue
+        }
+
+        if (piece.color === color) {
+          if (blocker !== EMPTY) {
+            break
+          }
+          blocker = step
+        } else {
+          const isPinner =
+            (orthogonal && (piece.type === ROOK || piece.type === QUEEN)) ||
+            (!orthogonal && (piece.type === BISHOP || piece.type === QUEEN))
+
+          if (blocker !== EMPTY && isPinner) {
+            pinned.push({
+              square: algebraic(blocker),
+              piece: this._board[blocker]!.type,
+              color,
+              pinnedBy: algebraic(step),
+              pinnedByPiece: piece.type,
+            })
+          }
+          break
+        }
+      }
+    }
+
+    return pinned
+  }
+
   private _isKingAttacked(color: Color): boolean {
     const square = this._kings[color]
     return square === -1 ? false : this._attacked(swapColor(color), square)
@@ -1802,6 +1881,65 @@ export class Chess {
       return moves.map((move) => this._createMove(move, moves))
     } else {
       return moves.map((move) => this._moveToSan(move, moves))
+    }
+  }
+
+  premoves(): string[]
+  premoves({ verbose }: { verbose: true }): Move[]
+  premoves({ verbose }: { verbose: false }): string[]
+  premoves({ verbose }: { verbose: boolean }): string[] | Move[]
+
+  /*
+   * the moves the side that is NOT to move could play on its next turn,
+   * no matter which legal move the side to move plays now. Such moves are
+   * safe to pre-commit in a user interface (premoves): every active-side
+   * move leaves the opponent able to play them.
+   *
+   * Returns an empty array when the game is over (no moves left for the
+   * side to move).
+   */
+  premoves({ verbose = false }: { verbose?: boolean } = {}): string[] | Move[] {
+    /*
+     * the premoves of the opponent are the legal moves that survive every
+     * reply to every legal move of the active player, so compute the
+     * intersection of the legal moves of the non-active side across all
+     * active-side moves
+     */
+    const color = swapColor(this._turn)
+
+    let premoves: InternalMove[] | null = null
+
+    for (const activeMove of this._moves({ legal: true })) {
+      this._makeMove(activeMove)
+
+      const replies = this._moves({ legal: true })
+
+      this._undoMove()
+
+      if (premoves === null) {
+        premoves = replies
+      } else {
+        premoves = premoves.filter((premove) =>
+          replies.some(
+            (reply) =>
+              reply.from === premove.from &&
+              reply.to === premove.to &&
+              reply.promotion === premove.promotion,
+          ),
+        )
+
+        if (premoves.length === 0) {
+          break
+        }
+      }
+    }
+
+    premoves = premoves ?? []
+
+    if (verbose) {
+      return premoves.map((premove) => this._createMove(premove, premoves!))
+    } else {
+      return premoves.map((premove) => this._moveToSan(premove, premoves!))
     }
   }
 
@@ -2202,6 +2340,7 @@ export class Chess {
 
     if (move.captured) {
       this._hash ^= this._pieceKey(move.to)
+      this._capturedPieces[us].push(move.captured)
     }
 
     // move the piece; castling moves are handled in the king block below
@@ -2562,6 +2701,10 @@ export class Chess {
 
     if (move.flags & BITS.NULL_MOVE) {
       return move
+    }
+
+    if (move.captured) {
+      this._capturedPieces[us].pop()
     }
 
     /*
@@ -3016,7 +3159,7 @@ export class Chess {
       return res
     }
 
-    let pieceType = inferPieceType(cleanMove)
+    const pieceType = inferPieceType(cleanMove)
     let moves = this._moves({ legal, piece: pieceType })
 
     // strict parser
@@ -3047,10 +3190,14 @@ export class Chess {
      *   e4, ee4, 2e4, e2e4, Pe4, Pe2-e4         (pawn moves)
      *   exd5, xd5, Pe4xd5, Pexd5, d5            (pawn captures)
      *
+     * An origin that is a complete square (e.g. the 'b1' of 'b1c3' or the
+     * 'b8' of 'b8d7') is read strictly as the from-square of the move and
+     * never as a piece letter, so long algebraic notation is unambiguous by
+     * construction.
+     *
      * NOTE: The permissive parser rejects ambiguous notations (e.g. 'd5'
-     * when several moves may end on d5, or 'b1c3' when it may be read as
-     * both 'Nc3' and 'B1c3'), as only moves that are matched unambiguously
-     * by exactly one legal move are accepted.
+     * when several moves may end on d5), as only moves that are matched
+     * unambiguously by exactly one legal move are accepted.
      */
 
     const matches: InternalMove[] = []
@@ -3061,38 +3208,54 @@ export class Chess {
      * optional promotion piece. The last file+rank pair of the string
      * denotes the target square.
      */
-    const target = cleanMove.match(/(.*)([a-h][1-8])([qrbnQRBN]?)$/)
+    const target = cleanMove.match(/(.*)([a-h]([1-8])?)([qrbnQRBN]?)$/)
     if (!target) {
       return null
     }
 
-    let origin = target[1].replace(/^[x-]+/, '').replace(/[x-]+$/, '')
+    const origin = target[1].replace(/^[x-]+/, '').replace(/[x-]+$/, '')
     const to = target[2]
-    const promotion = target[3]
+    const toRank = target[3]
+    const promotion = target[4]
 
     /*
-     * Generate all plausible interpretations of the origin part. A leading
-     * lowercase piece letter may also be the file of a piece-less origin
-     * (e.g. the 'b' in 'b1c3' may be a bishop piece letter or the b-file
-     * of the origin square), so both readings are tried.
+     * Generate all plausible interpretations of the origin part.
+     *
+     * When the origin part is a complete square (e.g. the 'b1' in 'b1c3' or
+     * the 'b8' in 'b8d7'), it is read strictly as the from-square of the move
+     * and never as a piece letter: a move string that specifies the exact
+     * from-square is unambiguous by construction (only one piece can stand on
+     * a given square). This matches the behavior of other libraries, where
+     * long algebraic notation names the from-square and nothing else is
+     * guessed from it.
+     *
+     * Otherwise the leading character may be a piece letter (either case,
+     * e.g. the 'N' of 'Ng1f3', the 'P' of 'P2e4') or the origin may be a bare
+     * file/rank (the 'e' of 'exd5', the '2' of '2e4'). A leading lowercase
+     * letter may be the file of a piece-less origin (the 'b' in 'b3' may be a
+     * bishop piece letter or the b-file), so both readings are tried.
      */
     const interpretations: { piece?: PieceSymbol; from?: string }[] = []
 
-    if (/^[pnbrqkPNBRQK]/.test(origin[0])) {
-      const from = origin.slice(1)
-      if (!from || /^[a-h1-8]{1,2}$/.test(from)) {
-        interpretations.push({
-          piece: origin[0].toLowerCase() as PieceSymbol,
-          from: from || undefined,
-        })
+    if (/^[a-h][1-8]$/.test(origin)) {
+      interpretations.push({ from: origin })
+    } else {
+      if (/^[pnbrqkPNBRQK]/.test(origin[0])) {
+        const from = origin.slice(1)
+        if (!from || /^[a-h1-8]{1,2}$/.test(from)) {
+          interpretations.push({
+            piece: origin[0].toLowerCase() as PieceSymbol,
+            from: from || undefined,
+          })
+        }
       }
-    }
 
-    if (
-      origin === '' ||
-      (/^[a-h1-8]{1,2}$/.test(origin) && !/^[PNBRQK]/.test(origin))
-    ) {
-      interpretations.push({ from: origin || undefined })
+      if (
+        origin === '' ||
+        (/^[a-h1-8]{1,2}$/.test(origin) && !/^[PNBRQK]/.test(origin))
+      ) {
+        interpretations.push({ from: origin || undefined })
+      }
     }
 
     moves = this._moves({ legal })
@@ -3118,8 +3281,14 @@ export class Chess {
           }
         }
 
-        if (algebraic(moves[i].to) !== to) {
-          continue
+        if (toRank) {
+          if (algebraic(moves[i].to) !== to) {
+            continue
+          }
+        } else {
+          if (algebraic(moves[i].to)[0] !== to) {
+            continue
+          }
         }
 
         if (promotion) {
@@ -3267,6 +3436,16 @@ export class Chess {
     }
 
     return moveHistory
+  }
+
+  /*
+   * the pieces of the given color that this game has captured, in capture
+   * order, e.g. after 1.e4 d5 2.exd5, capturedPieces('w') returns ['p']
+   * (the black pawn on d5). The returned array is a copy: modifying it
+   * does not affect the game state.
+   */
+  capturedPieces(color: Color): PieceSymbol[] {
+    return this._capturedPieces[color].slice()
   }
 
   /*
