@@ -29,6 +29,28 @@ describe('Regression Tests', () => {
     expect(chess.moves().join(' ')).toBe('Kd2 Ke2 Kxf2 Kf1 Kd1')
   })
 
+  it('Github Issue #577 - pawn on edge rank should have no moves', () => {
+    const chess = new Chess()
+    chess.clear()
+    chess.put({ type: 'k', color: 'w' }, 'e1')
+    chess.put({ type: 'k', color: 'b' }, 'e8')
+    chess.put({ type: 'p', color: 'w' }, 'h8')
+
+    expect(chess.moves({ square: 'h8', verbose: true })).toEqual([])
+    expect(chess.moves({ square: 'h8' })).toEqual([])
+  })
+
+  it('Github Issue #577 - black pawn on rank 1 should have no moves', () => {
+    const chess = new Chess()
+    chess.clear()
+    chess.put({ type: 'k', color: 'w' }, 'e1')
+    chess.put({ type: 'k', color: 'b' }, 'e8')
+    chess.put({ type: 'p', color: 'b' }, 'a1')
+
+    expect(chess.moves({ square: 'a1', verbose: true })).toEqual([])
+    expect(chess.moves({ square: 'a1' })).toEqual([])
+  })
+
   it('Github Issue #85 (white) - SetUp and FEN should be accepted in loadPgn', () => {
     const chess = new Chess()
     const pgn = [
