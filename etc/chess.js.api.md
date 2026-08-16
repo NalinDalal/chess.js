@@ -256,6 +256,8 @@ export class Chess {
     // (undocumented)
     reset(): void;
     // (undocumented)
+    resign(color: Color): void;
+    // (undocumented)
     setCastlingRights(color: Color, rights: Partial<Record<typeof KING | typeof QUEEN, boolean>>): boolean;
     // (undocumented)
     setComment(comment: string): void;

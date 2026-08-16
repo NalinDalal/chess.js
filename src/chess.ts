@@ -768,6 +768,7 @@ export class Chess {
   private _halfMoves = 0
   private _moveNumber = 0
   private _history: History[] = []
+  private _resigned: Color | null = null
   private _comments: Record<string, string> = {}
   private _suffixes: Record<string, Suffix> = {}
   private _nags: Record<string, NAG[]> = {}
@@ -795,6 +796,7 @@ export class Chess {
     this._halfMoves = 0
     this._moveNumber = 1
     this._history = []
+    this._resigned = null
     this._comments = {}
     this._header = preserveHeaders ? this._header : { ...HEADER_TEMPLATE }
     this._hash = this._computeHash()
@@ -1492,7 +1494,21 @@ export class Chess {
   }
 
   isGameOver({ strict = false }: { strict?: boolean } = {}): boolean {
-    return this.isCheckmate() || this.isDraw({ strict })
+    return (
+      this.isCheckmate() || this.isDraw({ strict }) || this._resigned !== null
+    )
+  }
+
+  resign(color: Color): void {
+    this._resigned = color
+
+    if (color === WHITE) {
+      this.setHeader('Result', '0-1')
+      this.setHeader('Termination', 'Black won - game abandoned')
+    } else {
+      this.setHeader('Result', '1-0')
+      this.setHeader('Termination', 'White won - game abandoned')
+    }
   }
 
   isPromotion({ from, to }: { from: Square; to: Square }): boolean {

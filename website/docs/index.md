@@ -587,8 +587,8 @@ chess.isInsufficientMaterial()
 ### .isGameOver(\{ strict = false \} = \{\})
 
 Returns true if the game has ended via checkmate or draw (by stalemate,
-insufficient material, threefold repetition or fifty-move rule). Otherwise,
-returns false.
+insufficient material, threefold repetition or fifty-move rule) or by
+resignation. Otherwise, returns false.
 
 If the optional `{ strict: true }` argument is given, it determines whether the
 game has ended via checkmate or a strictly drawn game as per Article 9 of the
@@ -609,6 +609,21 @@ chess.isGameOver()
 chess.load('rnb1kbnr/pppp1ppp/8/4p3/5PPq/8/PPPPP2P/RNBQKBNR w KQkq - 1 3')
 chess.isGameOver()
 // -> true
+```
+
+### .resign(color: Color)
+
+Marks the game as resigned by the given color (resulting in a win for the
+opponent), following chess.com PGN notation. Sets the `Result` and `Termination`
+headers accordingly, and causes `isGameOver()` to return true.
+
+```ts
+const chess = new Chess()
+chess.resign('w') // white resigns, black wins
+chess.isGameOver()
+// -> true
+chess.pgn()
+// -> '[Event "?"]...\n[Termination "Black won - game abandoned"]\n 0-1'
 ```
 
 ### .isPromotion(\{ from: Square, to: Square \})
