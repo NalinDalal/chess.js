@@ -400,3 +400,56 @@ describe('Load Comments', () => {
     })
   })
 })
+
+describe('Clock Comments', () => {
+  it('attaches a comment when making a move', () => {
+    const chess = new Chess()
+    chess.move('e4', { comment: '[%clk 0:03:01]' })
+    expect(chess.getComment()).toBe('[%clk 0:03:01]')
+    expect(chess.pgn().endsWith('1. e4 {[%clk 0:03:01]} *')).toBe(true)
+  })
+
+  it('does not attach a comment when none is given', () => {
+    const chess = new Chess()
+    chess.move('e4')
+    expect(chess.getComment()).toBeUndefined()
+  })
+
+  it('round-trips clock comments through pgn() and loadPgn()', () => {
+    const chess = new Chess()
+    chess.move('e4', { comment: '[%clk 0:03:01]' })
+    chess.move('e5', { comment: '[%clk 0:02:58]' })
+    chess.move('Nf3', { comment: '[%clk 0:02:55]' })
+
+    const pgn = chess.pgn()
+
+    const chess2 = new Chess()
+    chess2.loadPgn(pgn)
+    expect(chess2.getComments()).toEqual([
+      {
+        fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+        comment: '[%clk 0:03:01]',
+        nags: [],
+      },
+      {
+        fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2',
+        comment: '[%clk 0:02:58]',
+        nags: [],
+      },
+      {
+        fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2',
+        comment: '[%clk 0:02:55]',
+        nags: [],
+      },
+    ])
+  })
+
+  it('overwrites the comment of a position when moving with a comment', () => {
+    const chess = new Chess()
+    chess.move('e4')
+    chess.setComment('old comment')
+    chess.undo()
+    chess.move('e4', { comment: '[%clk 0:03:01]' })
+    expect(chess.getComment()).toBe('[%clk 0:03:01]')
+  })
+})

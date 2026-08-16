@@ -137,8 +137,9 @@ export class Chess {
         from: string;
         to: string;
         promotion?: string;
-    } | null, { strict }?: {
+    } | null, { strict, comment }?: {
         strict?: boolean;
+        comment?: string;
     }): Move;
     // (undocumented)
     moveNumber(): number;

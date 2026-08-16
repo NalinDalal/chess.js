@@ -853,6 +853,10 @@ non-standard move notations. Users may specify an `\{ strict: true \}` flag to
 verify that all supplied moves adhere to the Standard Algebraic Notation
 specification.
 
+An optional `\{ comment \}` option attaches a comment to the position resulting
+from the move, which is convenient for clock timestamps in timed games (using
+the `\{[%clk h:mm:ss]\}` convention).
+
 ```ts
 const chess = new Chess()
 
@@ -872,6 +876,11 @@ chess.move('Nge7') // Ne7 is unambiguous because the knight on c6 is pinned
 chess.undo()
 chess.move('Nge7', { strict: true }) // strict SAN requires Ne7
 // Error: Invalid move: Nge7
+
+chess.load('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
+chess.move('e4', { comment: '[%clk 0:03:01]' })
+chess.pgn()
+// -> '[Event "?"]...\n\n1. e4 {[%clk 0:03:01]} *'
 ```
 
 ### .moveNumber()

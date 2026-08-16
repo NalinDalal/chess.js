@@ -1862,7 +1862,7 @@ export class Chess {
 
   move(
     move: string | { from: string; to: string; promotion?: string } | null,
-    { strict = false }: { strict?: boolean } = {},
+    { strict = false, comment }: { strict?: boolean; comment?: string } = {},
   ): Move {
     /*
      * The move function can be called with in the following parameters:
@@ -1876,6 +1876,9 @@ export class Chess {
      *
      * An optional strict argument may be supplied to tell chess.js to
      * strictly follow the SAN specification.
+     *
+     * An optional comment may be supplied to annotate the position
+     * resulting from the move (e.g. a clock timestamp like '[%clk 0:03:01]').
      */
 
     let moveObj = null
@@ -1922,6 +1925,9 @@ export class Chess {
 
     this._makeMove(moveObj)
     this._incPositionCount()
+    if (comment) {
+      this.setComment(comment)
+    }
     return prettyMove
   }
 
