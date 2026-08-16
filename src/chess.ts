@@ -1890,11 +1890,29 @@ export class Chess {
     } else if (typeof move === 'object') {
       const moves = this._moves()
 
+      const from = move.from
+      let to = move.to
+
+      /*
+       * some move providers use a unified (chess960) notation for castling,
+       * encoding the king capture of its own rook, which would otherwise be
+       * interpreted as an illegal move
+       */
+      if (
+        (from === 'e1' && to === 'h1') ||
+        (from === 'e1' && to === 'a1') ||
+        (from === 'e8' && to === 'h8') ||
+        (from === 'e8' && to === 'a8')
+      ) {
+        const rank = from[1]
+        to = (to === 'h' + rank ? 'g' : 'c') + rank
+      }
+
       // convert the pretty move object to an ugly move object
       for (let i = 0, len = moves.length; i < len; i++) {
         if (
-          move.from === algebraic(moves[i].from) &&
-          move.to === algebraic(moves[i].to) &&
+          from === algebraic(moves[i].from) &&
+          to === algebraic(moves[i].to) &&
           (!('promotion' in moves[i]) || move.promotion === moves[i].promotion)
         ) {
           moveObj = moves[i]

@@ -846,6 +846,15 @@ chess.move({ from: 'g2', to: 'g3' })
 // -> { color: 'w', from: 'g2', to: 'g3', piece: 'p', san: 'g3' }
 ```
 
+Castling may be given using the unified Chess960 notation, in which the king
+moves to the square of its own rook:
+
+```ts
+chess.load('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1')
+chess.move({ from: 'e1', to: 'h1' }) // Chess960 kingside castling
+// -> { color: 'w', from: 'e1', to: 'g1', piece: 'k', san: 'O-O' }
+```
+
 #### .move() - Permissive Parser
 
 The permissive (default) move parser can be used to parse a variety of
