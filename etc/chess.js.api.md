@@ -273,6 +273,15 @@ export class Chess {
     setTurn(color: Color): boolean;
     // (undocumented)
     squareColor(square: Square): 'light' | 'dark' | null;
+    tryMove(move: string | {
+        from: string;
+        to: string;
+        promotion?: string;
+    } | null, { strict, comment, legal, }?: {
+        strict?: boolean;
+        comment?: string;
+        legal?: boolean;
+    }): Move | null;
     // (undocumented)
     turn(): Color;
     // (undocumented)

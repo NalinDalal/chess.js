@@ -919,6 +919,39 @@ chess.pgn()
 // -> '[Event "?"]...\n\n1. e4 {[%clk 0:03:01]} *'
 ```
 
+### .tryMove(move, [ options ])
+
+Like `move()`, but returns `null` instead of throwing an exception when the move
+is invalid, so invalid moves can be handled without `try`/`catch`. All of the
+`move()` options (`strict`, `comment`, `legal`) are supported, and the board is
+left unchanged when `null` is returned.
+
+```ts
+const chess = new Chess()
+
+chess.tryMove('e4')
+// -> { color: 'w', from: 'e2', to: 'e4', piece: 'p', san: 'e4' }
+
+chess.tryMove('Nf6') // no knight move to f6 is available
+// -> null
+
+chess.tryMove('e5') // black is not to move
+// -> null
+
+chess.tryMove(null) // null moves are allowed (when not in check)
+// -> { color: 'w', from: 'a8', to: 'a8', piece: 'k', san: '--' }
+```
+
+```ts
+const chess = new Chess('4k3/4r3/8/8/8/8/4R3/4K3 w - - 0 1')
+
+chess.tryMove('Rg2') // pinned rook may not leave the e-file
+// -> null
+
+chess.tryMove('Rg2', { legal: false }) // pseudo-legal moves are allowed
+// -> { color: 'w', from: 'e2', to: 'g2', piece: 'r', san: 'Rg2' }
+```
+
 ### .moveNumber()
 
 Returns the current move number.

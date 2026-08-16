@@ -1981,6 +1981,34 @@ export class Chess {
       legal = true,
     }: { strict?: boolean; comment?: string; legal?: boolean } = {},
   ): Move {
+    return this._move(move, { strict, comment, legal }, 'throw') as Move
+  }
+
+  /**
+   * Same as `move()`, but returns `null` instead of throwing when the move is
+   * invalid (e.g. an illegal or ambiguous move, or a null move while the side
+   * to move is in check). The board is left unchanged when `null` is returned.
+   */
+  tryMove(
+    move: string | { from: string; to: string; promotion?: string } | null,
+    {
+      strict = false,
+      comment,
+      legal = true,
+    }: { strict?: boolean; comment?: string; legal?: boolean } = {},
+  ): Move | null {
+    return this._move(move, { strict, comment, legal }, 'null')
+  }
+
+  private _move(
+    move: string | { from: string; to: string; promotion?: string } | null,
+    {
+      strict,
+      comment,
+      legal,
+    }: { strict: boolean; comment?: string; legal: boolean },
+    invalidResult: 'throw' | 'null',
+  ): Move | null {
     /*
      * The move function can be called with in the following parameters:
      *
@@ -2045,6 +2073,9 @@ export class Chess {
 
     // failed to find move
     if (!moveObj) {
+      if (invalidResult === 'null') {
+        return null
+      }
       if (typeof move === 'string') {
         throw new Error(`Invalid move: ${move}`)
       } else {
@@ -2054,6 +2085,9 @@ export class Chess {
 
     //disallow null moves when in check
     if (legal && this.isCheck() && moveObj.flags & BITS.NULL_MOVE) {
+      if (invalidResult === 'null') {
+        return null
+      }
       throw new Error('Null move not allowed when in check')
     }
 

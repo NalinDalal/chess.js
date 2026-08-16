@@ -489,3 +489,56 @@ test('move({ legal: false }) - pseudo-legal moves generate coherent SAN and PGN'
   expect(pgn).toContain('1. Ra2')
   expect(chess.fen()).toEqual('4k3/4r3/8/8/8/8/R7/4K3 b - - 1 1')
 })
+
+test('tryMove - returns null for invalid moves instead of throwing', () => {
+  const chess = new Chess()
+  const fen = chess.fen()
+
+  expect(chess.tryMove('nope')).toBeNull()
+  expect(chess.tryMove('e9')).toBeNull()
+  expect(chess.tryMove('Nf6')).toBeNull() // black hasn't moved yet, Nf6 is illegal
+  expect(chess.tryMove('e5')).toBeNull()
+  expect(chess.tryMove({ from: 'e2', to: 'e5' })).toBeNull()
+  expect(chess.tryMove({ from: 'a1', to: 'a2' })).toBeNull()
+  expect(chess.tryMove('e2e4', { strict: true })).toBeNull() // strict SAN rejects it
+
+  expect(chess.fen()).toEqual(fen) // board untouched
+  expect(chess.history()).toEqual([])
+
+  // valid moves are applied as usual
+  const strictE4 = chess.tryMove('e4', { strict: true })
+  expect(strictE4).not.toBeNull()
+  expect(strictE4?.san).toEqual('e4')
+  const nullMove = chess.tryMove(null) // null move while not in check succeeds
+  expect(nullMove).not.toBeNull()
+  expect(nullMove?.san).toEqual('--')
+  chess.undo()
+  expect(chess.history()).toEqual(['e4'])
+})
+
+test('tryMove - returns the move for valid moves and applies options', () => {
+  const chess = new Chess()
+
+  const move = chess.tryMove('e4', { comment: 'good' })
+  expect(move?.san).toEqual('e4')
+  expect(chess.getComment()).toEqual('good')
+
+  const quack = chess.tryMove({ from: 'e7', to: 'e5' })
+  expect(quack?.san).toEqual('e5')
+})
+
+test('tryMove - null move while in check returns null', () => {
+  const chess = new Chess('4k3/4r3/8/8/8/8/8/4K3 w - - 0 1')
+  expect(chess.isCheck()).toEqual(true)
+  expect(chess.tryMove(null)).toBeNull()
+  // with pseudo-legal moves allowed it succeeds
+  expect(chess.tryMove(null, { legal: false })?.san).toEqual('--')
+})
+
+test('tryMove - supports legal: false pseudo-legal moves', () => {
+  const chess = new Chess('4k3/4r3/8/8/8/8/4R3/4K3 w - - 0 1')
+  expect(chess.tryMove('Rg2')).toBeNull() // pinned rook may not leave the e-file
+  const move = chess.tryMove('Rg2', { legal: false })
+  expect(move?.san).toEqual('Rg2')
+  expect(move?.to).toEqual('g2')
+})
