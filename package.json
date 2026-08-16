@@ -1,14 +1,28 @@
 {
-  "name": "chess.js",
+  "name": "@nerdev/chess.js",
   "description": "TypeScript library for chess move generation, validation, execution, and game state - everything but the AI.",
   "version": "1.4.0",
   "license": "BSD-2-Clause",
   "main": "dist/cjs/chess.js",
   "module": "dist/esm/chess.js",
   "types": "dist/types/chess.d.ts",
-  "homepage": "https://github.com/jhlywa/chess.js",
-  "keywords": ["chess", "fen", "pgn", "typescript"],
-  "author": "Jeff Hlywa <jhlywa@gmail.com>",
+  "homepage": "https://github.com/nerdev-co/chess.js",
+  "keywords": [
+    "chess",
+    "fen",
+    "pgn",
+    "typescript"
+  ],
+  "author": "Nalin Dalal <nalin@nerdev.com>",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/",
+    "src/",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "prepare": "npm run build",
     "build": "npm run parser && tsc --noEmit && rollup -c",
@@ -27,7 +41,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/jhlywa/chess.js"
+    "url": "git+https://github.com/nerdev-co/chess.js.git"
   },
   "engines": {
     "node": ">=20.0.0"

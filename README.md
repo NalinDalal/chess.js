@@ -2,15 +2,17 @@
 
 # chess.js
 
-[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/jhlywa/chess.js/node.js.yml)](https://github.com/jhlywa/chess.js/actions)
-[![npm](https://img.shields.io/npm/v/chess.js?color=blue)](https://www.npmjs.com/package/chess.js)
-[![npm](https://img.shields.io/npm/dm/chess.js)](https://www.npmjs.com/package/chess.js)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/nerdev-co/chess.js/node.js.yml)](https://github.com/nerdev-co/chess.js/actions)
+[![npm](https://img.shields.io/npm/v/@nerdev/chess.js?color=blue)](https://www.npmjs.com/package/@nerdev/chess.js)
+[![npm](https://img.shields.io/npm/dm/@nerdev/chess.js)](https://www.npmjs.com/package/@nerdev/chess.js)
 
 chess.js is a TypeScript chess library used for chess move
 generation/validation, piece placement/movement, and check/checkmate/stalemate
 detection - basically everything but the AI.
 
 chess.js has been extensively tested in node.js and most modern browsers.
+
+This fork is maintained by [nerdev-co](https://github.com/nerdev-co).
 
 ## Documentation
 
@@ -23,7 +25,7 @@ Run the following command to install the most recent version of chess.js from
 NPM:
 
 ```sh
-npm install chess.js
+npm install @nerdev/chess.js
 ```
 
 ## Example Code
@@ -31,7 +33,7 @@ npm install chess.js
 The code below plays a random game of chess:
 
 ```ts
-import { Chess } from 'chess.js'
+import { Chess } from '@nerdev/chess.js'
 
 const chess = new Chess()
 
