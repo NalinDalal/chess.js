@@ -21,6 +21,10 @@ export class Chess {
     // (undocumented)
     attackers(square: Square, attackedBy?: Color): Square[];
     // (undocumented)
+    attackers(square: Square, attackedBy: Color | undefined, options: {
+        xray?: boolean;
+    }): Square[];
+    // (undocumented)
     board(): ({
         square: Square;
         type: PieceSymbol;

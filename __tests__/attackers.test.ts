@@ -216,3 +216,54 @@ test('attackers - readme tests', () => {
   chess.load('4k3/4n3/8/8/8/8/4R3/4K3 w - - 0 1')
   expect(chess.attackers('c6', BLACK)).to.have.members(['e7'])
 })
+
+test('attackers - xray - rook battery', () => {
+  const chess = new Chess('7k/8/8/8/8/8/R7/R6K w - - 0 1')
+  expect(chess.attackers('a3', WHITE)).to.have.members(['a2'])
+  expect(chess.attackers('a3', WHITE, { xray: true })).to.have.members([
+    'a1',
+    'a2',
+  ])
+})
+
+test('attackers - xray - triple battery', () => {
+  const chess = new Chess('7k/8/8/8/8/R7/R7/R6K w - - 0 1')
+  expect(chess.attackers('a4', WHITE)).to.have.members(['a3'])
+  expect(chess.attackers('a4', WHITE, { xray: true })).to.have.members([
+    'a1',
+    'a2',
+    'a3',
+  ])
+})
+
+test('attackers - xray - enemy piece blocks the ray', () => {
+  const chess = new Chess('7k/8/8/8/8/8/n7/R6K w - - 0 1')
+  expect(chess.attackers('a3', WHITE)).toEqual([])
+  expect(chess.attackers('a3', WHITE, { xray: true })).toEqual([])
+})
+
+test('attackers - xray - bishop battery through own piece', () => {
+  const chess = new Chess('7k/8/8/8/8/8/3N4/2B3K1 w - - 0 1')
+  expect(chess.attackers('e3', WHITE)).toEqual([])
+  expect(chess.attackers('e3', WHITE, { xray: true })).to.have.members(['c1'])
+})
+
+test('attackers - xray - enemy piece after friendly piece blocks the ray', () => {
+  const chess = new Chess('7k/8/8/8/8/r7/P7/R6K w - - 0 1')
+  expect(chess.attackers('a4', WHITE)).toEqual([])
+  expect(chess.attackers('a4', WHITE, { xray: true })).toEqual([])
+})
+
+test('attackers - xray - semi-protected piece (issue #542)', () => {
+  // f7 is defended by the rook f8 and the king g8, and attacked by the
+  // queen f3 and the rook f1 behind it (through the pawn f2 and queen f3)
+  const chess = new Chess(
+    'rn3rk1/ppp2ppp/8/2bp2q1/4n3/1BN2Q2/PPPP2PP/R1B1KR2 b Q - 4 10',
+  )
+  expect(chess.attackers('f7', WHITE)).to.have.members(['f3'])
+  expect(chess.attackers('f7', WHITE, { xray: true })).to.have.members([
+    'f1',
+    'f3',
+  ])
+  expect(chess.attackers('f7', BLACK)).to.have.members(['f8', 'g8'])
+})

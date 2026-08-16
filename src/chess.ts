@@ -1253,7 +1253,18 @@ export class Chess {
   private _attacked(color: Color, square: number): boolean
   private _attacked(color: Color, square: number, verbose: false): boolean
   private _attacked(color: Color, square: number, verbose: true): Square[]
-  private _attacked(color: Color, square: number, verbose?: boolean) {
+  private _attacked(
+    color: Color,
+    square: number,
+    verbose: true,
+    xray: boolean,
+  ): Square[]
+  private _attacked(
+    color: Color,
+    square: number,
+    verbose?: boolean,
+    xray = false,
+  ) {
     const attackers: Square[] = []
     for (let i = Ox88.a8; i <= Ox88.h1; i++) {
       // did we run off the end of the board
@@ -1307,9 +1318,12 @@ export class Chess {
 
         let blocked = false
         while (j !== square) {
-          if (this._board[j] != null) {
-            blocked = true
-            break
+          const blockingPiece = this._board[j]
+          if (blockingPiece != null) {
+            if (!(xray && blockingPiece.color === color)) {
+              blocked = true
+              break
+            }
           }
           j += offset
         }
@@ -1332,11 +1346,22 @@ export class Chess {
     }
   }
 
-  attackers(square: Square, attackedBy?: Color): Square[] {
+  attackers(square: Square, attackedBy?: Color): Square[]
+  attackers(
+    square: Square,
+    attackedBy: Color | undefined,
+    options: { xray?: boolean },
+  ): Square[]
+  attackers(
+    square: Square,
+    attackedBy?: Color,
+    options: { xray?: boolean } = {},
+  ): Square[] {
+    const { xray = false } = options
     if (!attackedBy) {
-      return this._attacked(this._turn, Ox88[square], true)
+      return this._attacked(this._turn, Ox88[square], true, xray)
     } else {
-      return this._attacked(attackedBy, Ox88[square], true)
+      return this._attacked(attackedBy, Ox88[square], true, xray)
     }
   }
 

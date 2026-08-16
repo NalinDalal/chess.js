@@ -156,11 +156,15 @@ chess.ascii()
 //          a  b  c  d  e  f  g  h'
 ```
 
-### .attackers(square, [ color ])
+### .attackers(square, [ color ], [ \{ xray = false \} ])
 
 Returns a list of squares that have pieces belonging to the side to move that
 can attack the given square. This function takes an optional parameter which can
 change which color the pieces should belong to.
+
+When `xray` is set to `true`, sliding pieces (bishops, rooks and queens) attack
+through friendly pieces, which counts batteries towards the number of attackers
+and defenders of a square.
 
 ```ts
 const chess = new Chess()
@@ -184,6 +188,13 @@ chess.attackers('f3', WHITE)
 chess.load('4k3/4n3/8/8/8/8/4R3/4K3 w - - 0 1')
 chess.attackers('c6', BLACK)
 // -> ['e7'] (pieces still attack a square even if they are pinned)
+
+chess.load('rn3rk1/ppp2ppp/8/2bp2q1/4n3/1BN2Q2/PPPP2PP/R1B1KR2 b Q - 4 10')
+chess.attackers('f7', WHITE)
+// -> ['f3'] (the rook f1 is blocked by the pawn f2)
+
+chess.attackers('f7', WHITE, { xray: true })
+// -> ['f1', 'f3'] (with xray the rook f1 attacks through the pawn f2)
 ```
 
 ### .board()
