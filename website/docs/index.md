@@ -112,6 +112,15 @@ and an object with a `skipValidation` boolean. By default the constructor will
 throw an exception if an invalid FEN string is provided. This behavior can be
 skipped by setting the `skipValidation` boolean.
 
+The
+[Shredder-FEN](https://www.chessprogramming.org/Forsyth-Edwards_Notation#Shredder-FEN)
+variant is supported, which extends the castling notation to specify the file of
+the rook: instead of `KQkq`, the castling rights section lists the files of the
+castling rooks (for example `HFhf`). This allows for any of the 960 possible
+starting positions of Chess960, whose
+[castling rules](https://www.chessprogramming.org/Chess960_Rules) (the king and
+rook ending on the files used for regular chess) are also implemented.
+
 ```ts
 import { Chess } from 'chess.js'
 

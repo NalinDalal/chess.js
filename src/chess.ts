@@ -65,6 +65,14 @@ const EP_KEYS = Array.from({ length: 8 }, () => rand())
 
 const CASTLING_KEYS = Array.from({ length: 16 }, () => rand())
 
+/*
+ * one random key per (color, side, file) - chess960 castling rights can
+ * involve any back-rank rook, not just the a/h-file rooks
+ */
+const CASTLING_ROOK_KEYS = Array.from({ length: 2 }, () =>
+  Array.from({ length: 2 }, () => Array.from({ length: 8 }, () => rand())),
+)
+
 const SIDE_KEY = rand()
 
 export const WHITE = 'w'
@@ -468,16 +476,10 @@ const SIDES = {
   [QUEEN]: BITS.QSIDE_CASTLE,
 }
 
-const ROOKS = {
-  w: [
-    { square: Ox88.a1, flag: BITS.QSIDE_CASTLE },
-    { square: Ox88.h1, flag: BITS.KSIDE_CASTLE },
-  ],
-  b: [
-    { square: Ox88.a8, flag: BITS.QSIDE_CASTLE },
-    { square: Ox88.h8, flag: BITS.KSIDE_CASTLE },
-  ],
-}
+const DEFAULT_CASTLING_ROOKS = {
+  w: { [KING]: Ox88.h1, [QUEEN]: Ox88.a1 },
+  b: { [KING]: Ox88.h8, [QUEEN]: Ox88.a8 },
+} as Record<Color, { [KING]: number; [QUEEN]: number }>
 
 const SECOND_RANK = { b: RANK_7, w: RANK_2 }
 
@@ -544,7 +546,7 @@ export function validateFen(fen: string): { ok: boolean; error?: string } {
   }
 
   // 5th criterion: 3th field is a valid castle-string?
-  if (/[^kKqQ-]/.test(tokens[2])) {
+  if (/[^kKqQa-hA-H-]/.test(tokens[2])) {
     return { ok: false, error: 'Invalid FEN: castling availability is invalid' }
   }
 
@@ -774,6 +776,22 @@ export class Chess {
   private _nags: Record<string, NAG[]> = {}
   private _castling: Record<Color, number> = { w: 0, b: 0 }
 
+  /*
+   * the square of the rook each castling right refers to. In standard chess
+   * the kingside rook is always on the h-file and the queenside rook on the
+   * a-file, but in chess960 a castling right may involve a rook on any
+   * back-rank file
+   */
+  private _castlingRooks: Record<Color, { [KING]: number; [QUEEN]: number }> =
+    DEFAULT_CASTLING_ROOKS
+
+  /*
+   * whether each color's castling rights were written in the standard
+   * 'KQkq' notation (which implies the king is on its home square) or as
+   * chess960 file letters (the king may be on any back-rank square)
+   */
+  private _castlingStandard: Record<Color, boolean> = { w: true, b: true }
+
   private _hash = 0n
 
   // tracks number of times a position has been seen for repetition checking
@@ -791,6 +809,11 @@ export class Chess {
     this._kings = { w: EMPTY, b: EMPTY }
     this._turn = WHITE
     this._castling = { w: 0, b: 0 }
+    this._castlingRooks = {
+      w: { [KING]: Ox88.h1, [QUEEN]: Ox88.a1 },
+      b: { [KING]: Ox88.h8, [QUEEN]: Ox88.a8 },
+    }
+    this._castlingStandard = { w: true, b: true }
     this._epSquare = EMPTY
     this._fenEpSquare = EMPTY
     this._halfMoves = 0
@@ -853,17 +876,43 @@ export class Chess {
 
     this._turn = tokens[1] as Color
 
-    if (tokens[2].indexOf('K') > -1) {
-      this._castling.w |= BITS.KSIDE_CASTLE
-    }
-    if (tokens[2].indexOf('Q') > -1) {
-      this._castling.w |= BITS.QSIDE_CASTLE
-    }
-    if (tokens[2].indexOf('k') > -1) {
-      this._castling.b |= BITS.KSIDE_CASTLE
-    }
-    if (tokens[2].indexOf('q') > -1) {
-      this._castling.b |= BITS.QSIDE_CASTLE
+    for (let i = 0; i < tokens[2].length; i++) {
+      const letter = tokens[2].charAt(i)
+      if (letter === '-') {
+        continue
+      }
+
+      const color = letter < 'a' ? WHITE : BLACK
+      const c = letter.toLowerCase()
+
+      /*
+       * in standard chess 'K' and 'Q' are shorthand for castling with the
+       * h-file and a-file rooks respectively; in chess960 (Shredder-FEN) each
+       * castling right is denoted by the file of its rook
+       */
+      const rookFile =
+        c === 'k' ? 7 : c === 'q' ? 0 : c.charCodeAt(0) - 'a'.charCodeAt(0)
+
+      if (rookFile < 0 || rookFile > 7) {
+        continue
+      }
+
+      /*
+       * a color that is castled with via file letters may have its king on any
+       * back-rank square
+       */
+      if (c !== 'k' && c !== 'q') {
+        this._castlingStandard[color] = false
+      }
+
+      const rookSquare = (color === WHITE ? 0x70 : 0) + rookFile
+      const side =
+        this._kings[color] !== EMPTY && rookSquare < this._kings[color]
+          ? QUEEN
+          : KING
+
+      this._castling[color] |= SIDES[side]
+      this._castlingRooks[color][side] = rookSquare
     }
 
     this._updateCastlingRights()
@@ -912,17 +961,39 @@ export class Chess {
     }
 
     let castling = ''
-    if (this._castling[WHITE] & BITS.KSIDE_CASTLE) {
-      castling += 'K'
-    }
-    if (this._castling[WHITE] & BITS.QSIDE_CASTLE) {
-      castling += 'Q'
-    }
-    if (this._castling[BLACK] & BITS.KSIDE_CASTLE) {
-      castling += 'k'
-    }
-    if (this._castling[BLACK] & BITS.QSIDE_CASTLE) {
-      castling += 'q'
+    for (const color of [WHITE, BLACK] as const) {
+      if (!this._castling[color]) {
+        continue
+      }
+
+      const sides = ([KING, QUEEN] as const).filter(
+        (side) => this._castling[color] & SIDES[side],
+      )
+
+      /*
+       * if the castling rights were given in the standard 'KQkq' notation
+       * print them that way; chess960 rights are printed as the file
+       * letters of their rooks in descending file order
+       */
+      const standard = this._castlingStandard[color]
+
+      if (standard) {
+        if (this._castling[color] & BITS.KSIDE_CASTLE) {
+          castling += color === WHITE ? 'K' : 'k'
+        }
+        if (this._castling[color] & BITS.QSIDE_CASTLE) {
+          castling += color === WHITE ? 'Q' : 'q'
+        }
+      } else {
+        const letters = sides
+          .map((side) => this._castlingRooks[color][side])
+          .sort((a, b) => b - a)
+          .map((square) => {
+            const letter = 'abcdefgh'.charAt(file(square))
+            return color === WHITE ? letter.toUpperCase() : letter
+          })
+        castling += letters.join('')
+      }
     }
 
     // do we have an empty castling flag?
@@ -1015,7 +1086,20 @@ export class Chess {
 
   private _castlingKey() {
     const index = (this._castling.w >> 5) | (this._castling.b >> 3)
-    return CASTLING_KEYS[index]
+    let key = CASTLING_KEYS[index]
+
+    for (const color of [WHITE, BLACK] as const) {
+      for (const side of [KING, QUEEN] as const) {
+        if (this._castling[color] & SIDES[side]) {
+          key ^=
+            CASTLING_ROOK_KEYS[color === WHITE ? 0 : 1][side === KING ? 0 : 1][
+              file(this._castlingRooks[color][side])
+            ]
+        }
+      }
+    }
+
+    return key
   }
 
   private _computeHash() {
@@ -1179,43 +1263,33 @@ export class Chess {
   private _updateCastlingRights() {
     this._hash ^= this._castlingKey()
 
-    const whiteKingInPlace =
-      this._board[Ox88.e1]?.type === KING &&
-      this._board[Ox88.e1]?.color === WHITE
-    const blackKingInPlace =
-      this._board[Ox88.e8]?.type === KING &&
-      this._board[Ox88.e8]?.color === BLACK
+    for (const color of [WHITE, BLACK] as const) {
+      const kingSq = this._kings[color]
 
-    if (
-      !whiteKingInPlace ||
-      this._board[Ox88.a1]?.type !== ROOK ||
-      this._board[Ox88.a1]?.color !== WHITE
-    ) {
-      this._castling.w &= ~BITS.QSIDE_CASTLE
-    }
+      if (kingSq === EMPTY) {
+        this._castling[color] = 0
+        continue
+      }
 
-    if (
-      !whiteKingInPlace ||
-      this._board[Ox88.h1]?.type !== ROOK ||
-      this._board[Ox88.h1]?.color !== WHITE
-    ) {
-      this._castling.w &= ~BITS.KSIDE_CASTLE
-    }
+      /*
+       * with traditional 'KQkq' castling notation the king must be on its
+       * home square for the rights to be valid, but with chess960 file
+       * letters the king may be on any back-rank square
+       */
+      const kingInPlace =
+        !this._castlingStandard[color] ||
+        kingSq === (color === WHITE ? Ox88.e1 : Ox88.e8)
 
-    if (
-      !blackKingInPlace ||
-      this._board[Ox88.a8]?.type !== ROOK ||
-      this._board[Ox88.a8]?.color !== BLACK
-    ) {
-      this._castling.b &= ~BITS.QSIDE_CASTLE
-    }
-
-    if (
-      !blackKingInPlace ||
-      this._board[Ox88.h8]?.type !== ROOK ||
-      this._board[Ox88.h8]?.color !== BLACK
-    ) {
-      this._castling.b &= ~BITS.KSIDE_CASTLE
+      for (const side of [KING, QUEEN] as const) {
+        const rookSq = this._castlingRooks[color][side]
+        if (
+          !kingInPlace ||
+          this._board[rookSq]?.type !== ROOK ||
+          this._board[rookSq]?.color !== color
+        ) {
+          this._castling[color] &= ~SIDES[side]
+        }
+      }
     }
 
     this._hash ^= this._castlingKey()
@@ -1787,52 +1861,71 @@ export class Chess {
 
     if (forPiece === undefined || forPiece === KING) {
       if (!singleSquare || lastSquare === this._kings[us]) {
-        // king-side castling
-        if (this._castling[us] & BITS.KSIDE_CASTLE) {
-          const castlingFrom = this._kings[us]
-          const castlingTo = castlingFrom + 2
+        const kingSq = this._kings[us]
 
-          if (
-            !this._board[castlingFrom + 1] &&
-            !this._board[castlingTo] &&
-            !this._attacked(them, this._kings[us]) &&
-            !this._attacked(them, castlingFrom + 1) &&
-            !this._attacked(them, castlingTo)
-          ) {
-            addMove(
-              moves,
-              us,
-              this._kings[us],
-              castlingTo,
-              KING,
-              undefined,
-              BITS.KSIDE_CASTLE,
-            )
-          }
-        }
+        if (kingSq !== EMPTY) {
+          for (const side of [KING, QUEEN] as const) {
+            if (this._castling[us] & SIDES[side]) {
+              const rookSq = this._castlingRooks[us][side]
+              const queenside = side === QUEEN
 
-        // queen-side castling
-        if (this._castling[us] & BITS.QSIDE_CASTLE) {
-          const castlingFrom = this._kings[us]
-          const castlingTo = castlingFrom - 2
+              /*
+               * in chess960 the king (and its rook) may be on any back-rank
+               * square, so the destination squares are the c/g-file (king)
+               * and d/f-file (rook) of the king's rank, and the paths may
+               * overlap
+               */
+              const castlingTo = (kingSq & 0xf0) | (queenside ? 2 : 6)
+              const rookTo = (kingSq & 0xf0) | (queenside ? 3 : 5)
 
-          if (
-            !this._board[castlingFrom - 1] &&
-            !this._board[castlingFrom - 2] &&
-            !this._board[castlingFrom - 3] &&
-            !this._attacked(them, this._kings[us]) &&
-            !this._attacked(them, castlingFrom - 1) &&
-            !this._attacked(them, castlingTo)
-          ) {
-            addMove(
-              moves,
-              us,
-              this._kings[us],
-              castlingTo,
-              KING,
-              undefined,
-              BITS.QSIDE_CASTLE,
-            )
+              // all squares the king and rook traverse must be empty
+              let castleable = true
+              for (const [from, to] of [
+                [kingSq, castlingTo],
+                [rookSq, rookTo],
+              ] as const) {
+                for (
+                  let sq = Math.min(from, to);
+                  sq <= Math.max(from, to);
+                  sq++
+                ) {
+                  if (this._board[sq] && sq !== kingSq && sq !== rookSq) {
+                    castleable = false
+                    break
+                  }
+                }
+                if (!castleable) break
+              }
+
+              /*
+               * the king may not be in check, nor pass over or land on an
+               * attacked square (in chess960 the rook's path may be attacked)
+               */
+              if (castleable) {
+                for (
+                  let sq = Math.min(kingSq, castlingTo);
+                  sq <= Math.max(kingSq, castlingTo);
+                  sq++
+                ) {
+                  if (this._attacked(them, sq)) {
+                    castleable = false
+                    break
+                  }
+                }
+              }
+
+              if (castleable) {
+                addMove(
+                  moves,
+                  us,
+                  kingSq,
+                  castlingTo,
+                  KING,
+                  undefined,
+                  SIDES[side],
+                )
+              }
+            }
           }
         }
       }
@@ -1963,6 +2056,11 @@ export class Chess {
   }
 
   private _movePiece(from: number, to: number) {
+    // in chess960 the king can already be on its castling destination square
+    if (from === to) {
+      return
+    }
+
     this._hash ^= this._pieceKey(from)
 
     this._board[to] = this._board[from]
@@ -1995,7 +2093,10 @@ export class Chess {
       this._hash ^= this._pieceKey(move.to)
     }
 
-    this._movePiece(move.from, move.to)
+    // move the piece; castling moves are handled in the king block below
+    if (!(move.flags & (BITS.KSIDE_CASTLE | BITS.QSIDE_CASTLE))) {
+      this._movePiece(move.from, move.to)
+    }
 
     // if ep capture, remove the captured pawn
     if (move.flags & BITS.EP_CAPTURE) {
@@ -2013,19 +2114,31 @@ export class Chess {
     }
 
     // if we moved the king
-    if (this._board[move.to].type === KING) {
-      this._kings[us] = move.to
-
-      // if we castled, move the rook next to the king
+    if (
+      move.flags & (BITS.KSIDE_CASTLE | BITS.QSIDE_CASTLE) ||
+      this._board[move.to].type === KING
+    ) {
       if (move.flags & BITS.KSIDE_CASTLE) {
         const castlingTo = move.to - 1
-        const castlingFrom = move.to + 1
-        this._movePiece(castlingFrom, castlingTo)
+        const castlingFrom = this._castlingRooks[us][KING]
+        /*
+         * place the rook and king simultaneously, since in chess960 their
+         * origin and destination squares can overlap
+         */
+        this._clear(move.from)
+        this._clear(castlingFrom)
+        this._set(move.to, { type: KING, color: us })
+        this._set(castlingTo, { type: ROOK, color: us })
       } else if (move.flags & BITS.QSIDE_CASTLE) {
         const castlingTo = move.to + 1
-        const castlingFrom = move.to - 2
-        this._movePiece(castlingFrom, castlingTo)
+        const castlingFrom = this._castlingRooks[us][QUEEN]
+        this._clear(move.from)
+        this._clear(castlingFrom)
+        this._set(move.to, { type: KING, color: us })
+        this._set(castlingTo, { type: ROOK, color: us })
       }
+
+      this._kings[us] = move.to
 
       // turn off castling
       this._castling[us] = 0
@@ -2033,12 +2146,12 @@ export class Chess {
 
     // turn off castling if we move a rook
     if (this._castling[us]) {
-      for (let i = 0, len = ROOKS[us].length; i < len; i++) {
+      for (const side of [KING, QUEEN] as const) {
         if (
-          move.from === ROOKS[us][i].square &&
-          this._castling[us] & ROOKS[us][i].flag
+          move.from === this._castlingRooks[us][side] &&
+          this._castling[us] & SIDES[side]
         ) {
-          this._castling[us] ^= ROOKS[us][i].flag
+          this._castling[us] ^= SIDES[side]
           break
         }
       }
@@ -2046,12 +2159,12 @@ export class Chess {
 
     // turn off castling if we capture a rook
     if (this._castling[them]) {
-      for (let i = 0, len = ROOKS[them].length; i < len; i++) {
+      for (const side of [KING, QUEEN] as const) {
         if (
-          move.to === ROOKS[them][i].square &&
-          this._castling[them] & ROOKS[them][i].flag
+          move.to === this._castlingRooks[them][side] &&
+          this._castling[them] & SIDES[side]
         ) {
-          this._castling[them] ^= ROOKS[them][i].flag
+          this._castling[them] ^= SIDES[side]
           break
         }
       }
@@ -2147,7 +2260,14 @@ export class Chess {
       return move
     }
 
-    this._movePiece(move.to, move.from)
+    /*
+     * move the piece back; castling moves are handled in the block below
+     * (the rook is moved back first so it can land on the king's starting
+     * square, which is the king's destination in chess960)
+     */
+    if (!(move.flags & (BITS.KSIDE_CASTLE | BITS.QSIDE_CASTLE))) {
+      this._movePiece(move.to, move.from)
+    }
 
     // to undo any promotions
     if (move.piece) {
@@ -2174,13 +2294,20 @@ export class Chess {
     if (move.flags & (BITS.KSIDE_CASTLE | BITS.QSIDE_CASTLE)) {
       let castlingTo: number, castlingFrom: number
       if (move.flags & BITS.KSIDE_CASTLE) {
-        castlingTo = move.to + 1
+        castlingTo = this._castlingRooks[us][KING]
         castlingFrom = move.to - 1
       } else {
-        castlingTo = move.to - 2
+        castlingTo = this._castlingRooks[us][QUEEN]
         castlingFrom = move.to + 1
       }
-      this._movePiece(castlingFrom, castlingTo)
+      /*
+       * restore the rook and king simultaneously, since in chess960 their
+       * origin and destination squares can overlap
+       */
+      this._clear(move.to)
+      this._clear(castlingFrom)
+      this._set(move.from, { type: KING, color: us })
+      this._set(castlingTo, { type: ROOK, color: us })
     }
 
     return move
