@@ -26,6 +26,7 @@
  */
 
 import { parse } from './pgn'
+import type { Node as RavNode } from './node'
 
 const MASK64 = 0xffffffffffffffffn
 
@@ -780,6 +781,40 @@ function strippedSan(move: string): string {
   return move.replace(/=/, '').replace(/[+#]?[?!]*$/, '')
 }
 
+/*
+ * Normalize the variation tree produced by the PGN parser for non-destructive
+ * navigation: the parser wraps every variation in a synthetic node and stores
+ * additional variations of a variation's first move on that wrapping node.
+ * This rebuilds the tree so that the variations of a position are all stored
+ * on the position's own node (the wrapping node itself is kept, since it can
+ * serve as the first move of a variation).
+ */
+function normalizeRav(node: RavNode): RavNode {
+  const normalized: RavNode = {
+    move: node.move,
+    suffixAnnotation: node.suffixAnnotation,
+    nags: node.nags,
+    comment: node.comment,
+    variations: node.variations.map(normalizeRav),
+  }
+
+  node.variations.forEach((child, i) => {
+    if (i > 0 && child.variations.length > 1) {
+      /*
+       * this child is a variation wrap; the parser stored the variations of
+       * the position after its first move on the wrap, move them onto the
+       * first move's node (and drop them from the wrap)
+       */
+      const wrap = normalized.variations[i]
+      const first = wrap.variations[0]
+      first.variations.push(...child.variations.slice(1).map(normalizeRav))
+      wrap.variations.length = 1
+    }
+  })
+
+  return normalized
+}
+
 export class Chess {
   private _board = new Array<Piece>(128)
   private _turn: Color = WHITE
@@ -794,6 +829,15 @@ export class Chess {
   private _comments: Record<string, string> = {}
   private _suffixes: Record<string, Suffix> = {}
   private _nags: Record<string, NAG[]> = {}
+
+  /*
+   * the variation tree of the last loaded PGN (Recursive Annotation
+   * Variations). _ravNode is the node of the current board position within
+   * that tree, or null when no game tree is loaded
+   */
+  private _rav: RavNode | null = null
+  private _ravNode: RavNode | null = null
+
   private _castling: Record<Color, number> = { w: 0, b: 0 }
 
   /*
@@ -841,6 +885,10 @@ export class Chess {
     this._history = []
     this._resigned = null
     this._comments = {}
+    this._suffixes = {}
+    this._nags = {}
+    this._rav = null
+    this._ravNode = null
     this._header = preserveHeaders ? this._header : { ...HEADER_TEMPLATE }
     this._hash = this._computeHash()
     this._positionCount = new Map<bigint, number>()
@@ -2288,9 +2336,202 @@ export class Chess {
     if (move) {
       const prettyMove = this._createMove(move)
       this._decPositionCount(hash)
+
+      /*
+       * when undoing a move that is part of the followed game tree, step the
+       * tree pointer back to the parent position
+       */
+      if (this._ravNode && prettyMove.san === this._ravNode.move) {
+        const parent = this._ravParent(this._ravNode)
+        if (parent) {
+          this._ravNode = parent
+        }
+      }
+
       return prettyMove
     }
     return null
+  }
+
+  /**
+   * Number of variations at the current position of the loaded game tree
+   * (0 = the line is exhausted, 1 = the main line continues, 2+ = the main
+   * line and one or more variations).
+   */
+  variations(): number {
+    return this._ravCandidates().length
+  }
+
+  /**
+   * Return the first move of the given variation at the current position
+   * (0 = the main line, the default) without executing it. Returns null when
+   * no game tree is loaded, the variation does not exist, or its move is not
+   * playable from the current position.
+   */
+  peek(variation = 0): Move | null {
+    const treeNode = this._ravVariationNode(variation)
+    if (!treeNode || !treeNode.move) {
+      return null
+    }
+    const move = this._moveFromSan(treeNode.move)
+    if (!move) {
+      return null
+    }
+    return this._createMove(move, this._moves({ legal: true }))
+  }
+
+  /**
+   * Execute the first move of the given variation (0 = the main line, the
+   * default) of the loaded game tree, annotating the resulting position with
+   * any comment, NAGs or suffix annotation stored at that node, like
+   * loadPgn() does for the main line. Returns null when no game tree is
+   * loaded, the variation does not exist, or its move is not playable from
+   * the current position (e.g. because the game was modified with move()).
+   */
+  next(variation = 0): Move | null {
+    const treeNode = this._ravVariationNode(variation)
+    if (!treeNode || !treeNode.move) {
+      return null
+    }
+
+    const move = this.tryMove(treeNode.move)
+    if (!move) {
+      return null
+    }
+
+    if (treeNode.comment !== undefined) {
+      this._comments[this.fen()] = treeNode.comment
+    }
+    if (treeNode.nags.length > 0) {
+      this._nags[this.fen()] = treeNode.nags
+    }
+    if (treeNode.suffixAnnotation) {
+      this._suffixes[this.fen()] = treeNode.suffixAnnotation as Suffix
+    }
+
+    this._ravNode = treeNode
+    return move
+  }
+
+  /**
+   * Go back to the initial position of the game (undoing all moves made so
+   * far) and reset the game tree pointer to the root of the loaded
+   * variation tree. The move history is kept and the moves can be replayed
+   * with next().
+   */
+  start(): void {
+    while (this.undo()) {
+      /* noop */
+    }
+    this._ravNode = this._rav
+  }
+
+  /**
+   * Remove the variation with the given index (0 = the main line) from the
+   * loaded game tree. Returns false when no game tree is loaded or the index
+   * is out of bounds.
+   */
+  deleteVariation(index: number): boolean {
+    const variations = this._ravNode?.variations
+    if (!variations || index < 0 || index >= variations.length) {
+      return false
+    }
+    variations.splice(index, 1)
+    return true
+  }
+
+  /**
+   * Move the variation with the given index to a new index (0 = the main
+   * line) within the loaded game tree. Returns false when no game tree is
+   * loaded or an index is out of bounds.
+   */
+  reorderVariation(from: number, to: number): boolean {
+    const variations = this._ravNode?.variations
+    if (
+      !variations ||
+      from < 0 ||
+      from >= variations.length ||
+      to < 0 ||
+      to >= variations.length
+    ) {
+      return false
+    }
+    const [moved] = variations.splice(from, 1)
+    variations.splice(to, 0, moved)
+    return true
+  }
+
+  private _ravParent(node: RavNode): RavNode | null {
+    if (!this._rav) {
+      return null
+    }
+    const stack: RavNode[] = [this._rav]
+    while (stack.length > 0) {
+      const current = stack.pop() as RavNode
+      for (const child of current.variations) {
+        if (child === node) {
+          return current
+        }
+        stack.push(child)
+      }
+    }
+    return null
+  }
+
+  /*
+   * Build the ordered list of variation nodes available at the current
+   * position: the main line (index 0), the variations stored on the current
+   * node, and any variations stored higher up in the same variation (up to
+   * its wrapping node) whose first move is playable from the current
+   * position. The parser stores such variations on the wrapping node whose
+   * side to move does not match their first move (e.g. a '4. d3 d6'
+   * variation following '3... Nf6' inside another variation), so they are
+   * revealed at the deeper position where they can actually be played.
+   * Variation wraps are transparently unwrapped.
+   */
+  private _ravCandidates(): RavNode[] {
+    const candidates: RavNode[] = []
+    const node = this._ravNode
+    if (!node) {
+      return candidates
+    }
+
+    const main = node.variations[0]
+    if (main) {
+      candidates.push(main)
+    }
+
+    const pushPlayable = (variation: RavNode | undefined) => {
+      if (!variation) {
+        return
+      }
+      const first = variation.move ? variation : variation.variations[0]
+      if (first?.move && this._moveFromSan(first.move)) {
+        candidates.push(variation)
+      }
+    }
+
+    for (let i = 1; i < node.variations.length; i++) {
+      pushPlayable(node.variations[i])
+    }
+
+    const parent = this._ravParent(node)
+    if (parent) {
+      for (let i = 1; i < parent.variations.length; i++) {
+        pushPlayable(parent.variations[i])
+      }
+    }
+
+    return candidates
+  }
+
+  private _ravVariationNode(variation: number): RavNode | null {
+    const candidate = this._ravCandidates()[variation]
+    /*
+     * variations are wrapped in a synthetic node without a move, whose only
+     * variation is the first node of the variation
+     */
+    return candidate?.move ? candidate : (candidate?.variations?.[0] ?? null)
   }
 
   private _undoMove(): InternalMove | null {
@@ -2658,6 +2899,25 @@ export class Chess {
     }
 
     /*
+     * retained for non-destructive navigation of the loaded variations with
+     * next()/peek()/start(). The variation (sub)trees are normalized so that
+     * a position's variations are all stored on that position's node: the
+     * parser stores additional variations of a variation's first move on the
+     * wrapping node instead, which get moved here to the first move's node.
+     * The board ends on the last move of the main line, so the tree pointer
+     * starts there too (found by walking the normalized tree in parallel
+     * with the raw one).
+     */
+    this._rav = normalizeRav(parsedPgn.root)
+    let ravNode: RavNode = this._rav
+    let rawNode: RavNode = parsedPgn.root
+    while (rawNode.variations[0]) {
+      rawNode = rawNode.variations[0]
+      ravNode = ravNode.variations[0]
+    }
+    this._ravNode = ravNode
+
+    /*
      * Per section 8.2.6 of the PGN spec, the Result tag pair must match match
      * the termination marker. Only do this when headers are present, but the
      * result tag is missing
@@ -2771,115 +3031,118 @@ export class Chess {
       return null
     }
 
-    let piece = undefined
-    let matches = undefined
-    let from = undefined
-    let to = undefined
-    let promotion = undefined
-
     /*
      * The default permissive (non-strict) parser allows the user to parse
      * non-standard chess notations. This parser is only run after the strict
      * Standard Algebraic Notation (SAN) parser has failed.
      *
-     * When running the permissive parser, we'll run a regex to grab the piece, the
-     * to/from square, and an optional promotion piece. This regex will
-     * parse common non-standard notation like: Pe2-e4, Rc1c4, Qf3xf7,
-     * f7f8q, b1c3
+     * The move string is decomposed into its components: an optional piece
+     * letter (either case), an optional origin (a square, file or rank), an
+     * optional capture/join separator ('x' or '-'), a required target square
+     * and an optional promotion piece (either case). Any of the optional
+     * components may be included or omitted, as long as the resulting
+     * notation matches exactly one legal move:
      *
-     * NOTE: Some positions and moves may be ambiguous when using the permissive
-     * parser. For example, in this position: 6k1/8/8/B7/8/8/8/BN4K1 w - - 0 1,
-     * the move b1c3 may be interpreted as Nc3 or B1c3 (a disambiguated bishop
-     * move). In these cases, the permissive parser will default to the most
-     * basic interpretation (which is b1c3 parsing to Nc3).
+     *   Nf3, Ngf3, Ng1f3, g1f3, Ng1-f3          (knight moves)
+     *   e4, ee4, 2e4, e2e4, Pe4, Pe2-e4         (pawn moves)
+     *   exd5, xd5, Pe4xd5, Pexd5, d5            (pawn captures)
+     *
+     * NOTE: The permissive parser rejects ambiguous notations (e.g. 'd5'
+     * when several moves may end on d5, or 'b1c3' when it may be read as
+     * both 'Nc3' and 'B1c3'), as only moves that are matched unambiguously
+     * by exactly one legal move are accepted.
      */
 
-    let overlyDisambiguated = false
+    const matches: InternalMove[] = []
 
-    matches = cleanMove.match(
-      /([pnbrqkPNBRQK])?([a-h][1-8])x?-?([a-h][1-8])([qrbnQRBN])?/,
-      //     piece         from              to       promotion
-    )
-
-    if (matches) {
-      piece = matches[1]
-      from = matches[2] as Square
-      to = matches[3] as Square
-      promotion = matches[4]
-
-      if (from.length == 1) {
-        overlyDisambiguated = true
-      }
-    } else {
-      /*
-       * The [a-h]?[1-8]? portion of the regex below handles moves that may be
-       * overly disambiguated (e.g. Nge7 is unnecessary and non-standard when
-       * there is one legal knight move to e7). In this case, the value of
-       * 'from' variable will be a rank or file, not a square.
-       */
-
-      matches = cleanMove.match(
-        /([pnbrqkPNBRQK])?([a-h]?[1-8]?)x?-?([a-h][1-8])([qrbnQRBN])?/,
-      )
-
-      if (matches) {
-        piece = matches[1]
-        from = matches[2] as Square
-        to = matches[3] as Square
-        promotion = matches[4]
-
-        if (from.length == 1) {
-          overlyDisambiguated = true
-        }
-      }
-    }
-
-    pieceType = inferPieceType(cleanMove)
-    moves = this._moves({
-      legal,
-      piece: piece ? (piece as PieceSymbol) : pieceType,
-    })
-
-    if (!to) {
+    /*
+     * Split the string into an optional origin part (piece letter and/or
+     * origin square, file or rank), the required target square and an
+     * optional promotion piece. The last file+rank pair of the string
+     * denotes the target square.
+     */
+    const target = cleanMove.match(/(.*)([a-h][1-8])([qrbnQRBN]?)$/)
+    if (!target) {
       return null
     }
 
-    for (let i = 0, len = moves.length; i < len; i++) {
-      if (!from) {
-        // if there is no from square, it could be just 'x' missing from a capture
-        if (
-          cleanMove ===
-          strippedSan(this._moveToSan(moves[i], moves)).replace('x', '')
-        ) {
-          return moves[i]
-        }
-        // hand-compare move properties with the results from our permissive regex
-      } else if (
-        (!piece || piece.toLowerCase() == moves[i].piece) &&
-        Ox88[from] == moves[i].from &&
-        Ox88[to] == moves[i].to &&
-        (!promotion || promotion.toLowerCase() == moves[i].promotion)
-      ) {
-        return moves[i]
-      } else if (overlyDisambiguated) {
-        /*
-         * SPECIAL CASE: we parsed a move string that may have an unneeded
-         * rank/file disambiguator (e.g. Nge7).  The 'from' variable will
-         */
+    let origin = target[1].replace(/^[x-]+/, '').replace(/[x-]+$/, '')
+    const to = target[2]
+    const promotion = target[3]
 
-        const square = algebraic(moves[i].from)
-        if (
-          (!piece || piece.toLowerCase() == moves[i].piece) &&
-          Ox88[to] == moves[i].to &&
-          (from == square[0] || from == square[1]) &&
-          (!promotion || promotion.toLowerCase() == moves[i].promotion)
-        ) {
-          return moves[i]
+    /*
+     * Generate all plausible interpretations of the origin part. A leading
+     * lowercase piece letter may also be the file of a piece-less origin
+     * (e.g. the 'b' in 'b1c3' may be a bishop piece letter or the b-file
+     * of the origin square), so both readings are tried.
+     */
+    const interpretations: { piece?: PieceSymbol; from?: string }[] = []
+
+    if (/^[pnbrqkPNBRQK]/.test(origin[0])) {
+      const from = origin.slice(1)
+      if (!from || /^[a-h1-8]{1,2}$/.test(from)) {
+        interpretations.push({
+          piece: origin[0].toLowerCase() as PieceSymbol,
+          from: from || undefined,
+        })
+      }
+    }
+
+    if (
+      origin === '' ||
+      (/^[a-h1-8]{1,2}$/.test(origin) && !/^[PNBRQK]/.test(origin))
+    ) {
+      interpretations.push({ from: origin || undefined })
+    }
+
+    moves = this._moves({ legal })
+
+    for (const { piece, from: fromOrigin } of interpretations) {
+      for (let i = 0, len = moves.length; i < len; i++) {
+        if (piece && moves[i].piece !== piece) {
+          continue
+        }
+
+        if (fromOrigin) {
+          const fromSquare = algebraic(moves[i].from)
+          if (fromOrigin.length === 2) {
+            if (fromOrigin !== fromSquare) {
+              continue
+            }
+          } else if (/[a-h]/.test(fromOrigin)) {
+            if (fromOrigin !== fromSquare[0]) {
+              continue
+            }
+          } else if (fromOrigin !== fromSquare[1]) {
+            continue
+          }
+        }
+
+        if (algebraic(moves[i].to) !== to) {
+          continue
+        }
+
+        if (promotion) {
+          if (moves[i].promotion !== promotion.toLowerCase()) {
+            continue
+          }
+        } else if (moves[i].promotion) {
+          continue
+        }
+
+        const move = moves[i]
+        if (matches.indexOf(move) === -1) {
+          matches.push(move)
         }
       }
     }
 
-    return null
+    /*
+     * a move is only accepted if exactly one legal move matches the
+     * notation; ambiguous strings (and strings that don't match any move)
+     * are rejected
+     */
+    return matches.length === 1 ? matches[0] : null
   }
 
   ascii(): string {

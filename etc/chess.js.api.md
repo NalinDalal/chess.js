@@ -45,6 +45,7 @@ export class Chess {
         fen: string;
         comment: string;
     }[];
+    deleteVariation(index: number): boolean;
     // (undocumented)
     fen({ forceEnpassantSquare, }?: {
         forceEnpassantSquare?: boolean;
@@ -231,6 +232,8 @@ export class Chess {
         piece?: PieceSymbol;
         legal?: boolean;
     }): string[] | Move[];
+    next(variation?: number): Move | null;
+    peek(variation?: number): Move | null;
     // (undocumented)
     perft(depth: number): number;
     // (undocumented)
@@ -257,6 +260,7 @@ export class Chess {
     removeNag(nag: NAG, fen?: string): boolean;
     removeNags(fen?: string): NAG[];
     removeSuffixAnnotation(fen?: string): Suffix | undefined;
+    reorderVariation(from: number, to: number): boolean;
     // (undocumented)
     reset(): void;
     // (undocumented)
@@ -273,6 +277,7 @@ export class Chess {
     setTurn(color: Color): boolean;
     // (undocumented)
     squareColor(square: Square): 'light' | 'dark' | null;
+    start(): void;
     tryMove(move: string | {
         from: string;
         to: string;
@@ -286,6 +291,7 @@ export class Chess {
     turn(): Color;
     // (undocumented)
     undo(): Move | null;
+    variations(): number;
 }
 
 // @public (undocumented)
